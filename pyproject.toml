@@ -1,0 +1,39 @@
+# pyproject.toml
+
+[build-system]
+requires      = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "decisionguild"
+version = "0.0.1"
+description = "A common framework for all rule-based and decision-based ML models. Based on Pattern Structures."
+readme = "README.md"
+authors = [{ name = "Egor Dudyrev" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
+keywords = ["python", "machine-learning", "pattern-structures"]
+dependencies = [
+    'paspailleur'
+]
+requires-python = ">=3.9"
+
+
+[project.urls]
+Homepage = "https://github.com/EgorDudyrev/DecisionGuild"
+
+
+[tool.setuptools]
+py-modules = ["decisionguild"]
+
+[tool.setuptools.packages]
+find = {}  # Scanning implicit namespaces is active by default
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
