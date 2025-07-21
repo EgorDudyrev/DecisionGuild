@@ -1,4 +1,4 @@
-from typing import TypeVar
+from typing import TypeVar, Optional
 
 import numpy as np
 from paspailleur.pattern_structures.pattern import Pattern
@@ -37,7 +37,7 @@ class OPRSet:
 
         priorities = set(priorities) | {(premise, premise) for premise in predictions}  # add identity relation
         priorities = self._transitive_closure(priorities)
-        assert all((b, a) not in priorities for a, b in priorities), \
+        assert all((b, a) not in priorities for a, b in priorities if a!=b), \
             "Priorities does not make a partial order, but rather a pseudo-order"
 
         self._predictions = predictions
@@ -58,17 +58,17 @@ class OPRSet:
     ######################
     # ML model interface #
     ######################
-    def predict(self, X: list[Pattern]) -> np.ndarray[TargetType]:
+    def predict(self, X: list[Pattern]) -> np.ndarray[Optional[TargetType]]:
         return np.array([self.predict_single(x) for x in X])
 
-    def predict_single(self, x: Pattern) -> TargetType:
+    def predict_single(self, x: Pattern) -> Optional[TargetType]:
         assert self._predictions is not None and self._priorities is not None,  \
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
         applied_premises = {premise for premise in self.premises if premise <= x}
         maximal_premises = {premise for premise in applied_premises
-                            if not any((premise, other) in self.priorities for other in applied_premises)}
+                            if not any((premise, other) in self.priorities for other in applied_premises if other != premise)}
         predictions = [self.predictions[premise] for premise in maximal_premises]
-        return sum(predictions)/len(predictions)
+        return sum(predictions)/len(predictions) if predictions else None
 
 
     #####################
@@ -87,6 +87,6 @@ class OPRSet:
             new_relation_added = False
             for left, rights in relation_dict.items():
                 rights_updated = {transitive for right in rights for transitive in relation_dict[right] - rights}
-                new_relation_added |= rights_updated
+                new_relation_added |= (rights_updated != set())
                 relation_dict[left] |= rights_updated
         return {(a, b) for a, bs in relation_dict.items() for b in bs}
