@@ -24,6 +24,14 @@ def test_init():
     with pytest.raises(AssertionError):
         model = OPRSet(predictions, {(p, q), (q, p)})
 
+    p, q = bip.IntervalPattern('[10, 20]'), bip.IntervalPattern('[30, 40]')
+    model = OPRSet({str(p): 1, str(q): 2}, PatternType=bip.IntervalPattern)
+    assert model.premises == {p, q}
+    assert model.predictions == {p: 1, q: 2}
+    assert model.priorities == {(p, p), (q, q)}
+    assert model.PatternType == bip.IntervalPattern
+
+
 
 def test_predict_single():
     class HumanPattern(bip.CartesianPattern):
@@ -33,8 +41,8 @@ def test_predict_single():
     r = HumanPattern({'country': 'France', 'age': '>=30'})
     predictions = {p: 1, q: 2, r: 3}
 
-    model = OPRSet(predictions)
-    assert model.predict_single(HumanPattern({'age': '[30, 60]'})) == 1
+    model = OPRSet(predictions, PatternType=HumanPattern)
+    assert model.predict_single({'age': '[30, 60]'}) == 1
     assert model.predict_single(HumanPattern({'country': 'France'})) == 2
     assert model.predict_single(HumanPattern({'age': 20, 'country': 'France'})) == 1.5
     assert model.predict_single(HumanPattern({'age': 30, 'country': 'France'})) == 3
@@ -53,6 +61,6 @@ def test_predict():
     X = [
         HumanPattern({'age': '[30, 60]'}), HumanPattern({'country': 'France'}),
         HumanPattern({'age': 20, 'country': 'France'}), HumanPattern({'age': 30, 'country': 'France'}),
-        HumanPattern({'age': 10})
+        {'age': 10}  # to test if OPRSet will automatically convert the data into HumanPattern
     ]
     assert (model.predict(X) == np.array([1, 2, 1.5, 3, None])).all()

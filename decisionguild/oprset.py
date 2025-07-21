@@ -6,6 +6,7 @@ from paspailleur.pattern_structures.pattern import Pattern
 
 class OPRSet:
     TargetType = TypeVar("TargetType")
+    PatternType = TypeVar("PatternType", bound=Pattern)
 
     #############
     # Class API #
@@ -13,8 +14,9 @@ class OPRSet:
 
     def __init__(
             self,
-            predictions: dict[Pattern, TargetType] = None,
-            priorities: set[tuple[Pattern, Pattern]] = None
+            predictions: dict[PatternType, TargetType] = None,
+            priorities: set[tuple[Pattern, Pattern]] = None,
+            PatternType = None,
     ):
         """Initialise OrderedPatternRuleSet using `predictions` and `priorities` (if given)
 
@@ -27,6 +29,13 @@ class OPRSet:
         if predictions is None:
             self._predictions, self._priorities = None, None
             return
+
+        if PatternType is None:
+            PatternType = next(iter(predictions.keys())).__class__
+        else:
+            predictions = {PatternType(k): v for k, v in predictions.items()}
+            if priorities is not None:
+                priorities = {(PatternType(left), PatternType(right)) for left, right in priorities}
 
         # `predictions` is not None
         if priorities is None:
@@ -42,6 +51,7 @@ class OPRSet:
 
         self._predictions = predictions
         self._priorities = priorities
+        self.PatternType = PatternType
 
     @property
     def premises(self) -> set[Pattern]:
@@ -64,6 +74,9 @@ class OPRSet:
     def predict_single(self, x: Pattern) -> Optional[TargetType]:
         assert self._predictions is not None and self._priorities is not None,  \
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
+
+        x = self.PatternType(x) if not isinstance(x, self.PatternType) else x
+
         applied_premises = {premise for premise in self.premises if premise <= x}
         maximal_premises = {premise for premise in applied_premises
                             if not any((premise, other) in self.priorities for other in applied_premises if other != premise)}
