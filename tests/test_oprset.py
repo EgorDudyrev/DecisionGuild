@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from decisionguild.oprset import OPRSet
+from decisionguild.dual_patterns import DualIntervalPattern
 from paspailleur.pattern_structures import built_in_patterns as bip
 
 
@@ -111,23 +112,6 @@ def test_is_decision_list():
 
 
 def test_is_decision_tree():
-    class DualIntervalPattern(bip.IntervalPattern):
-        def __neg__(self) -> Optional['DualIntervalPattern']:
-            tautology = self.get_min_pattern()
-            controversy = self.get_max_pattern()
-            if self == tautology:
-                return controversy
-            if self == controversy:
-                return tautology
-
-            if self.value[0] == tautology.value[0]:  # <x or <=x
-                return self.__class__(( (self.upper_bound, not self.is_upper_bound_closed), tautology.value[1]))
-
-            if self.value[1] == tautology.value[1]:  # >x or >=x
-                return self.__class__(( tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
-
-            return None
-
     t = DualIntervalPattern.get_min_pattern()
     p = DualIntervalPattern('>=20')
     q = DualIntervalPattern('<20')
@@ -166,23 +150,6 @@ def test_init_decision_list():
         OPRSet.init_decision_list([(t, 0), (p, 1), (q, 2)])
 
 def test_init_decision_tree():
-    class DualIntervalPattern(bip.IntervalPattern):
-        def __neg__(self) -> Optional['DualIntervalPattern']:
-            tautology = self.get_min_pattern()
-            controversy = self.get_max_pattern()
-            if self == tautology:
-                return controversy
-            if self == controversy:
-                return tautology
-
-            if self.value[0] == tautology.value[0]:  # <x or <=x
-                return self.__class__(( (self.upper_bound, not self.is_upper_bound_closed), tautology.value[1]))
-
-            if self.value[1] == tautology.value[1]:  # >x or >=x
-                return self.__class__(( tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
-
-            return None
-
     t = DualIntervalPattern.get_min_pattern()
     p = DualIntervalPattern('<=20')
     q = DualIntervalPattern('>20')
@@ -200,23 +167,6 @@ def test_init_decision_tree():
 
 
 def test_is_join_closed():
-    class DualIntervalPattern(bip.IntervalPattern):
-        def __neg__(self) -> Optional['DualIntervalPattern']:
-            tautology = self.get_min_pattern()
-            controversy = self.get_max_pattern()
-            if self == tautology:
-                return controversy
-            if self == controversy:
-                return tautology
-
-            if self.value[0] == tautology.value[0]:  # <x or <=x
-                return self.__class__(( (self.upper_bound, not self.is_upper_bound_closed), tautology.value[1]))
-
-            if self.value[1] == tautology.value[1]:  # >x or >=x
-                return self.__class__(( tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
-
-            return None
-
     t = DualIntervalPattern.get_min_pattern()
     p = DualIntervalPattern('<=20')
     q = DualIntervalPattern('>20')
