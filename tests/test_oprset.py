@@ -64,3 +64,23 @@ def test_predict():
         {'age': 10}  # to test if OPRSet will automatically convert the data into HumanPattern
     ]
     assert (model.predict(X) == np.array([1, 2, 1.5, 3, None])).all()
+
+
+def test_is_rule_set():
+    class CountryPattern(bip.CategorySetPattern):
+        Universe = {'France', 'Germany', 'UK'}
+    class HumanPattern(bip.CartesianPattern):
+        DimensionTypes = {'age': bip.IntervalPattern, 'country': CountryPattern}
+    p = HumanPattern({'age': '>=20'})
+    q = HumanPattern({'country': 'France'})
+    r = HumanPattern({'country': 'France', 'age': '>=30'})
+    t = HumanPattern(dict())
+
+    model = OPRSet({p: 1, q: 2, r: 3})
+    assert not model.is_rule_set()
+    model = OPRSet({p: 1, q: 2})
+    assert not model.is_rule_set()
+    model = OPRSet({p: 1, q: 2, t: 10})
+    assert model.is_rule_set()
+    model = OPRSet({p: 1, q: 2, r: 3, t: 10})
+    assert not model.is_rule_set()

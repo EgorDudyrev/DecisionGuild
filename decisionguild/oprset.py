@@ -65,6 +65,15 @@ class OPRSet:
     def priorities(self) -> set[tuple[Pattern, Pattern]]:
         return set(self._priorities)
 
+    def is_rule_set(self) -> bool:
+        tautology = self.PatternType.get_min_pattern()
+        if tautology not in self.premises:
+            return False
+
+        ruleset_priorities = {(p, p) for p in self.premises} | {(tautology, p) for p in self.premises}
+        return self.priorities == ruleset_priorities
+
+
     ######################
     # ML model interface #
     ######################
