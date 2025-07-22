@@ -148,6 +148,23 @@ class OPRSet:
         predictions = [self.predictions[premise] for premise in maximal_premises]
         return sum(predictions)/len(predictions) if predictions else None
 
+    def is_join_closed(self) -> bool:
+        tautology = self.PatternType.get_min_pattern()
+        controversy = self.PatternType.get_max_pattern()
+        if tautology not in self.premises:
+            return False
+
+        for p in self.premises:
+            for q in self.premises:
+                join = p | q
+                if join == controversy:
+                    continue
+
+                if join not in self.premises:
+                    return False
+                if (p, join) not in self.priorities or (q, join) not in self.priorities:
+                    return False
+        return True
 
     #####################
     # Helping functions #

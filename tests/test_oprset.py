@@ -161,3 +161,31 @@ def test_init_decision_tree():
     q2 = bip.IntervalPattern('>=20')
     with pytest.raises(AssertionError):
         OPRSet.init_decision_tree({t: 0, p: 2, q2: -1, r: 1, s: 3})
+
+
+def test_is_join_closed():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>20')
+    r = bip.IntervalPattern('<=10')
+    s = bip.IntervalPattern('(10, 20]')
+    model = OPRSet.init_decision_tree({t: 0, p: 2, q: -1, r: 1, s: 3})
+    assert model.is_join_closed()
+
+    model = OPRSet.init_decision_list([(p, 2), (t, 0)])
+    assert model.is_join_closed()
+    model = OPRSet.init_decision_list([(r, 1), (p, 2), (t, 0)])
+    assert model.is_join_closed()
+
+    model = OPRSet.init_decision_tree({t: 0, p: 2, q: -1})
+    assert model.is_join_closed()
+
+    model = OPRSet({p: 1, q:-1})
+    assert not model.is_join_closed()
+    model = OPRSet({p: 1, q:-1, t:0})
+    assert model.is_join_closed()
+
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    model = OPRSet.init_rule_set({t: 0, p: 2, q: -1})
+    assert not model.is_join_closed()\
