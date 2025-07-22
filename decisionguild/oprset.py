@@ -73,6 +73,17 @@ class OPRSet:
         ruleset_priorities = {(p, p) for p in self.premises} | {(tautology, p) for p in self.premises}
         return self.priorities == ruleset_priorities
 
+    def is_decision_list(self) -> bool:
+        tautology = self.PatternType.get_min_pattern()
+        if tautology not in self.premises:
+            return False
+
+        priorities_reduced = self._transitive_reduction(self.priorities)
+        n_premises = len(self.premises)
+
+        unique_lefts = len({left for left, _ in priorities_reduced}) == n_premises-1
+        unique_rights = len({right for right, _ in priorities_reduced}) == n_premises-1
+        return unique_lefts and unique_rights
 
     ######################
     # ML model interface #
@@ -112,3 +123,19 @@ class OPRSet:
                 new_relation_added |= (rights_updated != set())
                 relation_dict[left] |= rights_updated
         return {(a, b) for a, bs in relation_dict.items() for b in bs}
+
+    @staticmethod
+    def _transitive_reduction(relation: set[tuple[Pattern, Pattern]]) -> set[tuple[Pattern, Pattern]]:
+        relation_dict = dict()
+        for left, right in relation:
+            if left not in relation_dict:
+                relation_dict[left] = set()
+            if left != right:
+                relation_dict[left].add(right)
+
+        relation_reduced = dict()
+        for left, rights in relation_dict.items():
+            transitives = {trans for right in rights for trans in relation_dict[right]}
+            relation_reduced[left] = rights - transitives
+
+        return {(left, right) for left, rights in relation_reduced.items() for right in rights}

@@ -84,3 +84,25 @@ def test_is_rule_set():
     assert model.is_rule_set()
     model = OPRSet({p: 1, q: 2, r: 3, t: 10})
     assert not model.is_rule_set()
+
+
+def test_is_decision_list():
+    class CountryPattern(bip.CategorySetPattern):
+        Universe = {'France', 'Germany', 'UK'}
+    class HumanPattern(bip.CartesianPattern):
+        DimensionTypes = {'age': bip.IntervalPattern, 'country': CountryPattern}
+
+    p = HumanPattern({'age': '>=20'})
+    q = HumanPattern({'country': 'France'})
+    r = HumanPattern({'country': 'France', 'age': '>=30'})
+    t = HumanPattern(dict())
+
+    model = OPRSet({p: 1, q: 2, r: 3})
+    assert not model.is_decision_list()
+    model = OPRSet({p: 1, t: 10})
+    is_dl = model.is_decision_list()
+    assert is_dl
+    model = OPRSet({p: 1, q: 2, r:3}, priorities={(p, q), (q, r)})
+    assert not model.is_decision_list()
+    model = OPRSet({p: 1, q: 2, r: 3, t: 10}, priorities={(t, r), (r, q), (q, p)})
+    assert model.is_decision_list()
