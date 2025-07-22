@@ -188,4 +188,31 @@ def test_is_join_closed():
     p = bip.IntervalPattern('<=20')
     q = bip.IntervalPattern('>10')
     model = OPRSet.init_rule_set({t: 0, p: 2, q: -1})
-    assert not model.is_join_closed()\
+    assert not model.is_join_closed()
+
+def test_join_closure():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+    model = OPRSet({t: 0, p: 2, q: 1})
+    closure_true = OPRSet({t: 0, p: 2, q: 1, r: 1.5})
+    closure_fact = model.join_closure()
+    assert closure_fact.premises == closure_true.premises
+    assert closure_fact.predictions == closure_true.predictions
+    assert closure_fact.priorities == closure_true.priorities
+
+    s = bip.IntervalPattern('>50')
+    model = OPRSet({t: 0, p: 2, q: 1, s: 10})
+    closure_true = OPRSet({t: 0, p: 2, q: 1, r: 1.5, s: 10})
+    closure_fact = model.join_closure()
+    assert closure_fact.premises == closure_true.premises
+    assert closure_fact.predictions == closure_true.predictions
+    assert closure_fact.priorities == closure_true.priorities
+
+    model = OPRSet.init_decision_list([(p, 2), (q, 1), (t, 0)])
+    closure_true = OPRSet({t: 0, p: 2, q: 1, r: 2})
+    closure_fact = model.join_closure()
+    assert closure_fact.premises == closure_true.premises
+    assert closure_fact.predictions == closure_true.predictions
+    assert closure_fact.priorities == closure_true.priorities

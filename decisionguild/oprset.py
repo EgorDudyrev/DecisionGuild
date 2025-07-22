@@ -148,6 +148,25 @@ class OPRSet:
         predictions = [self.predictions[premise] for premise in maximal_premises]
         return sum(predictions)/len(predictions) if predictions else None
 
+    ######################
+    # Model manipulation #
+    ######################
+    def join_closure(self) -> 'OPRSet':
+        controversy = self.PatternType.get_max_pattern()
+        premise_list = list(self.premises)
+        i = 0
+        while i < len(premise_list):
+            for j in range(i):
+                join = premise_list[i] | premise_list[j]
+                if join == controversy or join in premise_list:
+                    continue
+                premise_list.append(join)
+            i += 1
+
+        predictions = {premise: self.predict_single(premise) for premise in premise_list}
+        return self.__class__(predictions, PatternType=self.PatternType)
+
+
     def is_join_closed(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
         controversy = self.PatternType.get_max_pattern()
