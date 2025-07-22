@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import pytest
 
@@ -109,14 +111,28 @@ def test_is_decision_list():
 
 
 def test_is_decision_tree():
-    class HumanPattern(bip.CartesianPattern):
-        DimensionTypes = {'age': bip.IntervalPattern}
+    class DualIntervalPattern(bip.IntervalPattern):
+        def __neg__(self) -> Optional['DualIntervalPattern']:
+            tautology = self.get_min_pattern()
+            controversy = self.get_max_pattern()
+            if self == tautology:
+                return controversy
+            if self == controversy:
+                return tautology
 
-    t = HumanPattern({})
-    p = HumanPattern({'age': '>=20'})
-    q = HumanPattern({'age': '<20'})
-    r = HumanPattern({'age': '>=40'})
-    s = HumanPattern({'age': '[20, 40)'})
+            if self.value[0] == tautology.value[0]:  # <x or <=x
+                return self.__class__(( (self.upper_bound, not self.is_upper_bound_closed), tautology.value[1]))
+
+            if self.value[1] == tautology.value[1]:  # >x or >=x
+                return self.__class__(( tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
+
+            return None
+
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('>=20')
+    q = DualIntervalPattern('<20')
+    r = DualIntervalPattern('>=40')
+    s = DualIntervalPattern('[20, 40)')
     model = OPRSet({p: 1, q: 2, r: 3})
     assert not model.is_decision_tree()
 
@@ -150,25 +166,62 @@ def test_init_decision_list():
         OPRSet.init_decision_list([(t, 0), (p, 1), (q, 2)])
 
 def test_init_decision_tree():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>20')
-    r = bip.IntervalPattern('<=10')
-    s = bip.IntervalPattern('(10, 20]')
-    model = OPRSet.init_decision_tree({t: 0, p: 2, q: -1, r: 1, s: 3})
-    assert model.is_decision_tree()
+    class DualIntervalPattern(bip.IntervalPattern):
+        def __neg__(self) -> Optional['DualIntervalPattern']:
+            tautology = self.get_min_pattern()
+            controversy = self.get_max_pattern()
+            if self == tautology:
+                return controversy
+            if self == controversy:
+                return tautology
 
-    q2 = bip.IntervalPattern('>=20')
+            if self.value[0] == tautology.value[0]:  # <x or <=x
+                return self.__class__(( (self.upper_bound, not self.is_upper_bound_closed), tautology.value[1]))
+
+            if self.value[1] == tautology.value[1]:  # >x or >=x
+                return self.__class__(( tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
+
+            return None
+
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>20')
+    r = DualIntervalPattern('<=10')
+    s = DualIntervalPattern('(10, 20]')
+    OPRSet.init_decision_tree({t: 0, p: 2, q: -1, r: 1, s: 3})
+
+    q2 = DualIntervalPattern('>=20')
     with pytest.raises(AssertionError):
         OPRSet.init_decision_tree({t: 0, p: 2, q2: -1, r: 1, s: 3})
 
+    q3 = DualIntervalPattern('>=30')
+    with pytest.raises(AssertionError):
+        OPRSet.init_decision_tree({t: 0, p: 1, q3: 2})
+
 
 def test_is_join_closed():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>20')
-    r = bip.IntervalPattern('<=10')
-    s = bip.IntervalPattern('(10, 20]')
+    class DualIntervalPattern(bip.IntervalPattern):
+        def __neg__(self) -> Optional['DualIntervalPattern']:
+            tautology = self.get_min_pattern()
+            controversy = self.get_max_pattern()
+            if self == tautology:
+                return controversy
+            if self == controversy:
+                return tautology
+
+            if self.value[0] == tautology.value[0]:  # <x or <=x
+                return self.__class__(( (self.upper_bound, not self.is_upper_bound_closed), tautology.value[1]))
+
+            if self.value[1] == tautology.value[1]:  # >x or >=x
+                return self.__class__(( tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
+
+            return None
+
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>20')
+    r = DualIntervalPattern('<=10')
+    s = DualIntervalPattern('(10, 20]')
     model = OPRSet.init_decision_tree({t: 0, p: 2, q: -1, r: 1, s: 3})
     assert model.is_join_closed()
 

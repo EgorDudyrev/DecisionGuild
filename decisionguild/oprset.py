@@ -103,8 +103,11 @@ class OPRSet:
         if any(len(next_nodes)!=2 for next_nodes in successors.values()):
             return False
 
-        return all(next_pos & next_neg == premise and next_pos | next_neg == controversy
-                   for premise, (next_pos, next_neg) in successors.items())
+        for premise, (next_pos, next_neg) in successors.items():
+            diff_pos, diff_neg = next_pos - premise, next_neg - premise
+            if diff_pos != -diff_neg:
+                return False
+        return True
 
     @classmethod
     def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None) -> 'OPRSet':
