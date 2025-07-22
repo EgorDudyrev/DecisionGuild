@@ -107,7 +107,7 @@ class OPRSet:
                    for premise, (next_pos, next_neg) in successors.items())
 
     @classmethod
-    def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None):
+    def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None) -> 'OPRSet':
         PatternType = next(iter(predictions.keys())).__class__ if PatternType is None else PatternType
         tautology = PatternType.get_min_pattern()
 
@@ -117,7 +117,7 @@ class OPRSet:
         return ruleset
 
     @classmethod
-    def init_decision_list(cls, predictions: list[tuple[Pattern, TargetType]], PatternType = None):
+    def init_decision_list(cls, predictions: list[tuple[Pattern, TargetType]], PatternType = None) -> 'OPRSet':
         premises = [premise for premise, _ in predictions]
         priorities = {(q, p) for p, q in zip(premises, premises[1:])}
         dlist = cls(dict(predictions), priorities, PatternType=PatternType)
@@ -125,7 +125,7 @@ class OPRSet:
         return dlist
 
     @classmethod
-    def init_decision_tree(cls, predictions: dict[Pattern, TargetType], PatternType = None):
+    def init_decision_tree(cls, predictions: dict[Pattern, TargetType], PatternType = None) -> 'OPRSet':
         dtree = cls(predictions, PatternType=PatternType)
         assert dtree.is_decision_tree()
         return dtree
