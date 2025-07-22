@@ -108,7 +108,11 @@ class OPRSet:
 
     @classmethod
     def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None):
-        ruleset = cls(predictions, PatternType=PatternType)
+        PatternType = next(iter(predictions.keys())).__class__ if PatternType is None else PatternType
+        tautology = PatternType.get_min_pattern()
+
+        priorities = {(p, p) for p in predictions} | {(tautology, p) for p in predictions}
+        ruleset = cls(predictions, priorities, PatternType=PatternType)
         assert ruleset.is_rule_set()
         return ruleset
 

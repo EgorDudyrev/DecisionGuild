@@ -134,7 +134,8 @@ def test_init_rule_set():
     t = bip.IntervalPattern.get_min_pattern()
     p = bip.IntervalPattern('<=20')
     q = bip.IntervalPattern('>=30')
-    model = OPRSet.init_rule_set({t: 0, p: 1, q: 2})
+    r = bip.IntervalPattern('>=50')
+    model = OPRSet.init_rule_set({t: 0, p: 1, q: 2, r: 3})
     assert model.is_rule_set()
     with pytest.raises(AssertionError):
         model = OPRSet.init_rule_set({p: 1, q: 2})
