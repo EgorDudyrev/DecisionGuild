@@ -85,6 +85,25 @@ class OPRSet:
         unique_rights = len({right for right, _ in priorities_reduced}) == n_premises-1
         return unique_lefts and unique_rights
 
+    def is_decision_tree(self) -> bool:
+        tautology = self.PatternType.get_min_pattern()
+        controversy = self.PatternType.get_max_pattern()
+        if tautology not in self.premises:
+            return False
+
+        priorities_reduced = self._transitive_reduction(self.priorities)
+        successors = {}
+        for left, right in priorities_reduced:
+            if left not in successors:
+                successors[left] = set()
+            successors[left].add(right)
+
+        if any(len(next_nodes)!=2 for next_nodes in successors.values()):
+            return False
+
+        return all(next_pos & next_neg == premise and next_pos | next_neg == controversy
+                   for premise, (next_pos, next_neg) in successors.items())
+
     ######################
     # ML model interface #
     ######################

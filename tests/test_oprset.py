@@ -106,3 +106,25 @@ def test_is_decision_list():
     assert not model.is_decision_list()
     model = OPRSet({p: 1, q: 2, r: 3, t: 10}, priorities={(t, r), (r, q), (q, p)})
     assert model.is_decision_list()
+
+
+def test_is_decision_tree():
+    class HumanPattern(bip.CartesianPattern):
+        DimensionTypes = {'age': bip.IntervalPattern}
+
+    t = HumanPattern({})
+    p = HumanPattern({'age': '>=20'})
+    q = HumanPattern({'age': '<20'})
+    r = HumanPattern({'age': '>=40'})
+    s = HumanPattern({'age': '[20, 40)'})
+    model = OPRSet({p: 1, q: 2, r: 3})
+    assert not model.is_decision_tree()
+
+    model = OPRSet({t:0, p: 2, q: -2, r: 3, s: 1})
+    assert model.is_decision_tree()
+    model = OPRSet({p: 2, q: -2, r: 3, s: 1})
+    assert not model.is_decision_tree()
+    model = OPRSet({t: 0, p: 2, q: -2, r: 3})
+    assert not model.is_decision_tree()
+    model = OPRSet({t: 0, q: -2, r: 3, s: 1})
+    assert not model.is_decision_tree()
