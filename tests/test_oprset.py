@@ -128,3 +128,35 @@ def test_is_decision_tree():
     assert not model.is_decision_tree()
     model = OPRSet({t: 0, q: -2, r: 3, s: 1})
     assert not model.is_decision_tree()
+
+
+def test_init_rule_set():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>=30')
+    model = OPRSet.init_rule_set({t: 0, p: 1, q: 2})
+    assert model.is_rule_set()
+    with pytest.raises(AssertionError):
+        model = OPRSet.init_rule_set({p: 1, q: 2})
+
+def test_init_decision_list():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>=30')
+    model = OPRSet.init_decision_list([(p, 1), (q, 2), (t, 0)])
+    assert model.is_decision_list()
+    with pytest.raises(AssertionError):
+        OPRSet.init_decision_list([(t, 0), (p, 1), (q, 2)])
+
+def test_init_decision_tree():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>20')
+    r = bip.IntervalPattern('<=10')
+    s = bip.IntervalPattern('(10, 20]')
+    model = OPRSet.init_decision_tree({t: 0, p: 2, q: -1, r: 1, s: 3})
+    assert model.is_decision_tree()
+
+    q2 = bip.IntervalPattern('>=20')
+    with pytest.raises(AssertionError):
+        OPRSet.init_decision_tree({t: 0, p: 2, q2: -1, r: 1, s: 3})

@@ -79,6 +79,8 @@ class OPRSet:
             return False
 
         priorities_reduced = self._transitive_reduction(self.priorities)
+        if any(right == tautology for _, right in priorities_reduced):
+            return False
         n_premises = len(self.premises)
 
         unique_lefts = len({left for left, _ in priorities_reduced}) == n_premises-1
@@ -103,6 +105,26 @@ class OPRSet:
 
         return all(next_pos & next_neg == premise and next_pos | next_neg == controversy
                    for premise, (next_pos, next_neg) in successors.items())
+
+    @classmethod
+    def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None):
+        ruleset = cls(predictions, PatternType=PatternType)
+        assert ruleset.is_rule_set()
+        return ruleset
+
+    @classmethod
+    def init_decision_list(cls, predictions: list[tuple[Pattern, TargetType]], PatternType = None):
+        premises = [premise for premise, _ in predictions]
+        priorities = {(q, p) for p, q in zip(premises, premises[1:])}
+        dlist = cls(dict(predictions), priorities, PatternType=PatternType)
+        assert dlist.is_decision_list()
+        return dlist
+
+    @classmethod
+    def init_decision_tree(cls, predictions: dict[Pattern, TargetType], PatternType = None):
+        dtree = cls(predictions, PatternType=PatternType)
+        assert dtree.is_decision_tree()
+        return dtree
 
     ######################
     # ML model interface #
