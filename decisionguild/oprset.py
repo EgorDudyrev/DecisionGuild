@@ -1,8 +1,9 @@
-from typing import TypeVar, Optional
+from typing import TypeVar, Optional, Union
 
 import numpy as np
 from paspailleur.pattern_structures.pattern import Pattern
 
+from decisionguild import converters
 
 class OPRSet:
     TargetType = TypeVar("TargetType")
@@ -132,6 +133,10 @@ class OPRSet:
         dtree = cls(predictions, PatternType=PatternType)
         assert dtree.is_decision_tree()
         return dtree
+
+    @classmethod
+    def from_sklearn_dtree(cls, decision_tree, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
+        return cls(*converters.from_sklearn_dtree(decision_tree, feature_names=feature_names))
 
     ######################
     # ML model interface #
