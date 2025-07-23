@@ -228,3 +228,20 @@ class OPRSet:
             relation_reduced[left] = rights - transitives
 
         return {(left, right) for left, rights in relation_reduced.items() for right in rights}
+
+
+class OPRClassifier(OPRSet):
+    TargetType = int
+
+    def predict_single_proba(self, x: Pattern) -> Optional[np.ndarray]:
+        return super().predict_single(x)
+
+    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+        return int(np.argmax(self.predict_single_proba(x)))
+
+    def predict_proba(self, X: list[Pattern]) -> np.ndarray:
+        return np.vstack([self.predict_single_proba(x) for x in X])
+
+    @property
+    def predictions(self) -> dict[Pattern, np.ndarray[float]]:
+        return super().predictions

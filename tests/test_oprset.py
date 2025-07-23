@@ -1,9 +1,7 @@
-from typing import Optional
-
 import numpy as np
 import pytest
 
-from decisionguild.oprset import OPRSet
+from decisionguild.oprset import OPRSet, OPRClassifier
 from decisionguild.dual_patterns import DualIntervalPattern
 from paspailleur.pattern_structures import built_in_patterns as bip
 
@@ -219,3 +217,21 @@ def test_join_closure():
     assert closure_fact.premises == closure_true.premises
     assert closure_fact.predictions == closure_true.predictions
     assert closure_fact.priorities == closure_true.priorities
+
+
+def test_from_sklearn_dtree():
+    from sklearn import tree
+    X = [[0, 0], [1, 1]]
+    Y = [0, 1]
+    clf = tree.DecisionTreeClassifier(random_state=42)
+    clf = clf.fit(X, Y)
+
+    oprset = OPRClassifier.from_sklearn_dtree(clf)
+    X_patterns = [oprset.PatternType(dict(enumerate(x))) for x in X]
+    preds_clf = clf.predict(X)
+    preds_oprset = oprset.predict(X_patterns)
+    assert (preds_clf == preds_oprset).all()
+
+    preds_clf = clf.predict_proba(X)
+    preds_oprset = oprset.predict_proba(X_patterns)
+    assert (preds_clf == preds_oprset).all()
