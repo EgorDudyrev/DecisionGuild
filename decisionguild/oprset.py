@@ -261,6 +261,10 @@ class OPRSet:
         closure = (self.linearise() + other.linearise()).join_closure()
         return self.__class__(predictions=closure.predictions, priorities=closure.priorities, PatternType=closure.PatternType)
 
+    def scale(self, k: int) -> 'OPRSet':
+        scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
+        return self.__class__(scaled_predictions, priorities=self.priorities, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
+
     #####################
     # Helping functions #
     #####################

@@ -17,6 +17,7 @@ class LinPRSet(OPRSet):
             predictions: dict[PatternType, TargetType] = None,
             PatternType = None,
             subsumption_order: set[tuple[Pattern, Pattern]] = None,
+            priorities: set[tuple[Pattern, Pattern]] = None,  # for backwards compatibility with OPRSet. does not affect anything
     ):
         priorities = {(p, p) for p in predictions}
         super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order)
@@ -53,10 +54,6 @@ class LinPRSet(OPRSet):
                 elif q <= p:
                     subsumption_order.add((q, p))
         return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
-
-    def scale(self, k: int) -> "LinPRSet":
-        scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
-        return self.__class__(scaled_predictions, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
 
     def join_closure(self) -> 'OPRSet':
         closure = super().join_closure()

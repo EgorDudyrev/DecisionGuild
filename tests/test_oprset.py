@@ -312,6 +312,18 @@ def test_add_classifiers():
     assert (preds_rf == preds_oprset).all()
 
 
+def test_scale():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+
+    model = OPRSet.init_rule_set({t: 1, p: 2, q: 4}).scale(10)
+    assert model.predict_single(t) == 10
+    assert model.predict_single(p) == 20
+    assert model.predict_single(q) == 40
+    assert model.predict_single(r) == 30
+
 def test_from_sklearn_rforest():
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.datasets import load_iris
