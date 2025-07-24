@@ -45,6 +45,10 @@ class LinPRSet(OPRSet):
                 predictions[premise] = other_prediction
         return self.__class__(predictions, PatternType=self.PatternType)
 
+    def scale(self, k: int) -> "LinPRSet":
+        scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
+        return self.__class__(scaled_predictions, PatternType=self.PatternType)
+
     def join_closure(self) -> 'OPRSet':
         closure = super().join_closure()
         return OPRSet(closure.predictions, PatternType=closure.PatternType)

@@ -138,6 +138,20 @@ class OPRSet:
     def from_sklearn_dtree(cls, decision_tree, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
         return cls(*converters.from_sklearn_dtree(decision_tree, feature_names=feature_names))
 
+    @classmethod
+    def from_sklearn_rforest(cls, random_forest, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
+        estimators = [cls.from_sklearn_dtree(estimator, feature_names) for estimator in random_forest.estimators_]
+        weights = [1/len(estimators) for _ in estimators]
+        return cls.from_ensemble(estimators, weights)
+
+    @classmethod
+    def from_ensemble(cls, estimators: list['OPRSet'], weights: list[float]) -> 'OPRSet':
+        linearised = estimators[0].linearise().scale(weights[0])
+        for estimator, weight in zip(estimators[1:], weights[1:]):
+            linearised += estimator.linearise().scale(weight)
+        closure = linearised.join_closure()
+        return cls(closure.predictions, closure.priorities, PatternType=closure.PatternType)
+
     ######################
     # ML model interface #
     ######################

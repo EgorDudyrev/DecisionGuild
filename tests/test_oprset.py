@@ -289,13 +289,12 @@ def test_add():
 def test_add_classifiers():
     # Iris data
     from sklearn.datasets import load_iris
-    from sklearn import tree
+    from sklearn.ensemble import RandomForestClassifier
     iris = load_iris()
     X, y = iris.data, iris.target
-    clf1 = tree.DecisionTreeClassifier(random_state=42)
-    clf1 = clf1.fit(X, y)
-    clf2 = tree.DecisionTreeClassifier(random_state=43)
-    clf2 = clf2.fit(X, y)
+    rf = RandomForestClassifier(random_state=42, n_estimators=2)
+    rf.fit(X, y)
+    clf1, clf2 = rf.estimators_
 
     oprset1 = OPRClassifier.from_sklearn_dtree(clf1)
     oprset2 = OPRClassifier.from_sklearn_dtree(clf2)
@@ -308,4 +307,25 @@ def test_add_classifiers():
     preds_oprset = oprset.predict_proba(X_patterns)
     assert (preds_oprset - (preds_clf1+preds_clf2) < 1e-10).all()
 
+    preds_rf = rf.predict(X)
+    preds_oprset = oprset.predict(X_patterns)
+    assert (preds_rf == preds_oprset).all()
 
+
+def test_from_sklearn_rforest():
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.datasets import load_iris
+    iris = load_iris()
+    X, y = iris.data, iris.target
+    rf = RandomForestClassifier(random_state=42, n_estimators=3, max_depth=3)
+    rf.fit(X, y)
+    oprset = OPRClassifier.from_sklearn_rforest(rf)
+
+    X_patterns = [oprset.PatternType(dict(enumerate(x))) for x in X]
+    preds_rf = rf.predict(X)
+    preds_oprset = oprset.predict(X_patterns)
+    assert (preds_rf == preds_oprset).all()
+
+    preds_rf = rf.predict_proba(X)
+    preds_oprset = oprset.predict_proba(X_patterns)
+    assert (preds_rf - preds_oprset < 1e-10).all()
