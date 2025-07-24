@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from decisionguild.linprset import LinPRSet
 from decisionguild.oprset import OPRSet, OPRClassifier
 from decisionguild.dual_patterns import DualIntervalPattern
 from paspailleur.pattern_structures import built_in_patterns as bip
@@ -235,3 +236,16 @@ def test_from_sklearn_dtree():
     preds_clf = clf.predict_proba(X)
     preds_oprset = oprset.predict_proba(X_patterns)
     assert (preds_clf == preds_oprset).all()
+
+
+def test_linearise():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+    model = OPRSet({t: 0, p: 2, q: 1, r: 1.5})
+    linearised = model.linearise()
+    linearised_true = LinPRSet({t: 0, p: 2, q: 1, r: -1.5})
+    assert linearised.premises == linearised_true.premises
+    assert linearised.predictions == linearised_true.predictions
+    assert linearised.priorities == linearised_true.priorities

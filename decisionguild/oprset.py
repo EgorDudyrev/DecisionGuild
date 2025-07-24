@@ -193,6 +193,22 @@ class OPRSet:
                     return False
         return True
 
+    def linearise(self) -> 'LinPRSet':
+        from decisionguild.linprset import LinPRSet
+        closure = self if self.is_join_closed() else self.join_closure()
+        predecessors = {}
+        for left, right in closure.priorities:
+            if right not in predecessors:
+                predecessors[right] = set()
+            if left != right:
+                predecessors[right].add(left)
+
+        predictions = {}
+        for premise in sorted(predecessors, key=lambda p: len(predecessors[p])):
+            accumulated_prediction = sum(predictions[pred] for pred in predecessors[premise])
+            predictions[premise] = closure.predictions[premise] - accumulated_prediction
+        return LinPRSet(predictions)
+
     #####################
     # Helping functions #
     #####################
