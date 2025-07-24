@@ -177,11 +177,17 @@ class OPRSet:
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
 
         x = self.PatternType(x) if not isinstance(x, self.PatternType) else x
+        applied_premises, maximal_premises = self.traverse_single(x)
 
-        applied_premises = {premise for premise in self.premises if premise <= x}
-        maximal_premises = {premise for premise in applied_premises
-                            if not any((premise, other) in self.priorities for other in applied_premises if other != premise)}
-        predictions = [self.predictions[premise] for premise in maximal_premises]
+        if self.priorities != self._subsumption_order:
+            maxpriority_premises = {
+                premise for premise in applied_premises
+                if not any((premise, other) in self.priorities for other in applied_premises if other != premise)
+            }
+        else:
+            maxpriority_premises = maximal_premises
+
+        predictions = [self.predictions[premise] for premise in maxpriority_premises]
         return sum(predictions)/len(predictions) if predictions else None
 
     ######################
