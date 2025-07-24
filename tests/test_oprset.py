@@ -221,11 +221,30 @@ def test_join_closure():
 
 
 def test_from_sklearn_dtree():
+    # A very toy-ish data
     from sklearn import tree
     X = [[0, 0], [1, 1]]
     Y = [0, 1]
     clf = tree.DecisionTreeClassifier(random_state=42)
     clf = clf.fit(X, Y)
+
+    oprset = OPRClassifier.from_sklearn_dtree(clf)
+    X_patterns = [oprset.PatternType(dict(enumerate(x))) for x in X]
+    preds_clf = clf.predict(X)
+    preds_oprset = oprset.predict(X_patterns)
+    assert (preds_clf == preds_oprset).all()
+
+    preds_clf = clf.predict_proba(X)
+    preds_oprset = oprset.predict_proba(X_patterns)
+    assert (preds_clf == preds_oprset).all()
+
+    # Iris data
+    from sklearn.datasets import load_iris
+    from sklearn import tree
+    iris = load_iris()
+    X, y = iris.data, iris.target
+    clf = tree.DecisionTreeClassifier(random_state=42)
+    clf = clf.fit(X, y)
 
     oprset = OPRClassifier.from_sklearn_dtree(clf)
     X_patterns = [oprset.PatternType(dict(enumerate(x))) for x in X]
@@ -249,3 +268,44 @@ def test_linearise():
     assert linearised.premises == linearised_true.premises
     assert linearised.predictions == linearised_true.predictions
     assert linearised.priorities == linearised_true.priorities
+
+
+def test_add():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+
+    model1 = OPRSet.init_rule_set({t: 1, p: 2, q: 4})
+    model2 = OPRSet.init_decision_list([(r, 20), (q, 15), (t, 10)])
+    model_sum_true = OPRSet({t: 1+10, p: 2+10, q: 4+15, r: 3+20})
+    model_sum = model1 + model2
+    assert type(model_sum) == type(model_sum_true)
+    assert model_sum.premises == model_sum_true.premises
+    assert model_sum.predictions == model_sum_true.predictions
+    assert model_sum.priorities == model_sum_true.priorities
+
+
+def test_add_classifiers():
+    # Iris data
+    from sklearn.datasets import load_iris
+    from sklearn import tree
+    iris = load_iris()
+    X, y = iris.data, iris.target
+    clf1 = tree.DecisionTreeClassifier(random_state=42)
+    clf1 = clf1.fit(X, y)
+    clf2 = tree.DecisionTreeClassifier(random_state=43)
+    clf2 = clf2.fit(X, y)
+
+    oprset1 = OPRClassifier.from_sklearn_dtree(clf1)
+    oprset2 = OPRClassifier.from_sklearn_dtree(clf2)
+    oprset  = oprset1 + oprset2
+    assert type(oprset) == type(oprset1)
+
+    X_patterns = [oprset.PatternType(dict(enumerate(x))) for x in X]
+    preds_clf1 = clf1.predict_proba(X)
+    preds_clf2 = clf2.predict_proba(X)
+    preds_oprset = oprset.predict_proba(X_patterns)
+    assert (preds_oprset - (preds_clf1+preds_clf2) < 1e-10).all()
+
+

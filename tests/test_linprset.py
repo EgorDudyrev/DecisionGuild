@@ -1,5 +1,6 @@
 from paspailleur.pattern_structures import built_in_patterns as bip
 
+from decisionguild.oprset import OPRSet
 from decisionguild.linprset import LinPRSet
 
 def test_init():
@@ -43,5 +44,19 @@ def test_add():
     model_sum = model + model2
     assert model_sum.predictions == model_sum_true.predictions
     assert model_sum.priorities == model_sum_true.priorities
+
+def test_join_closure():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+    model = LinPRSet({t: 1, p: 2, q: 4})
+    closure_true = OPRSet({t: 1, p: 3, q: 5, r: 7})
+
+    closure = model.join_closure()
+    assert type(closure) == OPRSet
+    assert closure.premises == closure_true.premises
+    assert closure.predictions == closure_true.predictions
+    assert closure.priorities == closure_true.priorities
 
 

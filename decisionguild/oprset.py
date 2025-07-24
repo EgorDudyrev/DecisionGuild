@@ -209,6 +209,10 @@ class OPRSet:
             predictions[premise] = closure.predictions[premise] - accumulated_prediction
         return LinPRSet(predictions)
 
+    def __add__(self, other: 'OPRSet') -> 'OPRSet':
+        closure = (self.linearise() + other.linearise()).join_closure()
+        return self.__class__(predictions=closure.predictions, priorities=closure.priorities, PatternType=closure.PatternType)
+
     #####################
     # Helping functions #
     #####################
@@ -261,3 +265,8 @@ class OPRClassifier(OPRSet):
     @property
     def predictions(self) -> dict[Pattern, np.ndarray[float]]:
         return super().predictions
+
+    def join_closure(self) -> 'OPRClassifier':
+        closure = super().join_closure()
+        predictions = {premise: self.predict_single_proba(premise) for premise in closure.premises}
+        return self.__class__(predictions=predictions, priorities=closure.priorities, PatternType=closure.PatternType)
