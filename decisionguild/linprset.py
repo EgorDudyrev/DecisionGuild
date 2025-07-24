@@ -16,9 +16,10 @@ class LinPRSet(OPRSet):
             self,
             predictions: dict[PatternType, TargetType] = None,
             PatternType = None,
+            subsumption_order: set[tuple[Pattern, Pattern]] = None,
     ):
         priorities = {(p, p) for p in predictions}
-        super().__init__(predictions, priorities, PatternType=PatternType)
+        super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order)
 
     ######################
     # ML model interface #
