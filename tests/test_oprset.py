@@ -341,3 +341,30 @@ def test_from_sklearn_rforest():
     preds_rf = rf.predict_proba(X)
     preds_oprset = oprset.predict_proba(X_patterns)
     assert (preds_rf - preds_oprset < 1e-10).all()
+
+def test_traverse_single():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+
+    model = OPRSet.init_rule_set({t: 1, p: 2, q: 4})
+    assert model.traverse_single(t) == ({t}, {t})
+    assert model.traverse_single(p) == ({t, p}, {p})
+    assert model.traverse_single(q) == ({t, q}, {q})
+    assert model.traverse_single(r) == ({t, p, q}, {p, q})
+
+
+def test_traverse():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+
+    model = OPRSet.init_rule_set({t: 1, p: 2, q: 4})
+    assert model.traverse([t, p, q, r]) == [
+        ({t}, {t}),
+        ({t, p}, {p}),
+        ({t, q}, {q}),
+        ({t, p, q}, {p, q}),
+    ]

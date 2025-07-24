@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import TypeVar, Optional, Union
 
 import numpy as np
@@ -264,6 +265,39 @@ class OPRSet:
     def scale(self, k: int) -> 'OPRSet':
         scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
         return self.__class__(scaled_predictions, priorities=self.priorities, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
+
+    def traverse(self, X: list[Pattern]) -> list[tuple[set[Pattern], set[Pattern]]]:
+        return [self.traverse_single(x) for x in X]
+
+    def traverse_single(self, x: PatternType) -> tuple[set[Pattern], set[Pattern]]:
+        all_successors = {premise: set() for premise in self.premises}
+        for left, right in self._subsumption_order:
+            if left != right:
+                all_successors[left].add(right)
+        direct_successors = dict()
+        for premise, successors in all_successors.items():
+            transitives = reduce(set.union, (all_successors[suc] for suc in successors), set())
+            direct_successors[premise] = successors - set(transitives)
+
+        top_level_premises = set(self.premises) - set(reduce(set.union, all_successors.values(), set()))
+
+        applied_patterns = set()
+        cancelled_patterns = set()
+        queue = list(top_level_premises)
+        while queue:
+            premise = queue.pop(0)
+            if premise in cancelled_patterns:
+                continue
+            if premise <= x:
+                applied_patterns.add(premise)
+                for successor in direct_successors[premise] - cancelled_patterns:
+                    queue.append(successor)
+            else:  # not (premise <= x)
+                cancelled_patterns |= all_successors[premise]
+
+        maximal_patterns = {premise for premise in applied_patterns
+                            if direct_successors[premise].isdisjoint(applied_patterns)}
+        return applied_patterns, maximal_patterns
 
     #####################
     # Helping functions #
