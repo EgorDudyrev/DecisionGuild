@@ -40,7 +40,7 @@ class OPRSet:
             if priorities is not None:
                 priorities = {(PatternType(left), PatternType(right)) for left, right in priorities}
             if subsumption_order is not None:
-                subsumption_order = {(PatternType(left), PatternType(right)) for left, right in priorities}
+                subsumption_order = {(PatternType(left), PatternType(right)) for left, right in subsumption_order}
 
         # `predictions` is not None
         if subsumption_order is None:
@@ -207,7 +207,7 @@ class OPRSet:
                 premise_list.append(join)
 
                 subpremises[join] = subpremises[p] | subpremises[q]
-                for other in set(subpremises) - set(subpremises[join]) - {join}:
+                for other in set(subpremises) - set(subpremises[join]):
                     if p in subpremises[other] and q in subpremises[other]:
                         subpremises[other].add(join)
                         continue
@@ -219,7 +219,8 @@ class OPRSet:
             i += 1
 
         predictions = {premise: self.predict_single(premise) for premise in premise_list}
-        return self.__class__(predictions, PatternType=self.PatternType)
+        subsumption_order = {(sub, superpremise) for superpremise, subs in subpremises.items() for sub in subs}
+        return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
 
 
     def is_join_closed(self) -> bool:

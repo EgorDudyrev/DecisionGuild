@@ -44,12 +44,20 @@ class LinPRSet(OPRSet):
                 predictions[premise] = predictions[premise] + other_prediction
             else:
                 predictions[premise] = other_prediction
-        return self.__class__(predictions, PatternType=self.PatternType)
+
+        subsumption_order = self._subsumption_order | other._subsumption_order
+        for p in self.premises:
+            for q in other.premises - self.premises:
+                if p <= q:
+                    subsumption_order.add((p, q))
+                elif q <= p:
+                    subsumption_order.add((q, p))
+        return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
 
     def scale(self, k: int) -> "LinPRSet":
         scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
-        return self.__class__(scaled_predictions, PatternType=self.PatternType)
+        return self.__class__(scaled_predictions, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
 
     def join_closure(self) -> 'OPRSet':
         closure = super().join_closure()
-        return OPRSet(closure.predictions, PatternType=closure.PatternType)
+        return OPRSet(closure.predictions, PatternType=closure.PatternType, subsumption_order=closure._subsumption_order)
