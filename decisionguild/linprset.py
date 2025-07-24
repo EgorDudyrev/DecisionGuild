@@ -32,3 +32,15 @@ class LinPRSet(OPRSet):
         applied_premises = {premise for premise in self.premises if premise <= x}
         predictions = [self.predictions[premise] for premise in applied_premises]
         return sum(predictions) if predictions else None
+
+    ######################
+    # Model manipulation #
+    ######################
+    def __add__(self, other):
+        predictions = dict(self.predictions)
+        for premise, other_prediction in other.predictions.items():
+            if premise in predictions:
+                predictions[premise] = predictions[premise] + other_prediction
+            else:
+                predictions[premise] = other_prediction
+        return self.__class__(predictions, PatternType=self.PatternType)

@@ -32,3 +32,16 @@ def test_predict_single():
     assert model.predict_single(0) == 3
 
 
+def test_add():
+    t = bip.IntervalPattern.get_min_pattern()
+    p = bip.IntervalPattern('<=20')
+    q = bip.IntervalPattern('>10')
+    r = bip.IntervalPattern('(10, 20]')
+    model = LinPRSet({t: 1, p: 2, q: 4})
+    model2 = LinPRSet({t: 8, q: 16, r: 32})
+    model_sum_true = LinPRSet({t: 9, p: 2, q: 20, r: 32})
+    model_sum = model + model2
+    assert model_sum.predictions == model_sum_true.predictions
+    assert model_sum.priorities == model_sum_true.priorities
+
+
