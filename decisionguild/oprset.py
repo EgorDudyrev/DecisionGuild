@@ -58,6 +58,11 @@ class OPRSet:
         assert all((b, a) not in priorities for a, b in priorities if a!=b), \
             "Priorities does not make a partial order, but rather a pseudo-order"
 
+        n_subsumed = {premise: 0 for premise in predictions}
+        for _, right in subsumption_order:
+            n_subsumed[right] += 1
+
+        self._premises: list[Pattern] = sorted(predictions, key=lambda premise: n_subsumed[premise])
         self._predictions = predictions
         self._priorities = priorities
         self.PatternType = PatternType
@@ -65,7 +70,7 @@ class OPRSet:
 
     @property
     def premises(self) -> set[Pattern]:
-        return set(self.predictions)
+        return set(self._premises)
 
     @property
     def predictions(self) -> dict[Pattern, TargetType]:
@@ -75,9 +80,13 @@ class OPRSet:
     def priorities(self) -> set[tuple[Pattern, Pattern]]:
         return set(self._priorities)
 
+    @property
+    def contains_tautology(self) -> bool:
+        return self._premises[0] == self.PatternType.get_min_pattern()
+
     def is_rule_set(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
         ruleset_priorities = {(p, p) for p in self.premises} | {(tautology, p) for p in self.premises}
@@ -85,7 +94,7 @@ class OPRSet:
 
     def is_decision_list(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
         priorities_reduced = self._transitive_reduction(self.priorities)
@@ -98,9 +107,7 @@ class OPRSet:
         return unique_lefts and unique_rights
 
     def is_decision_tree(self) -> bool:
-        tautology = self.PatternType.get_min_pattern()
-        controversy = self.PatternType.get_max_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
         if self.priorities != self._subsumption_order:
@@ -231,18 +238,18 @@ class OPRSet:
 
 
     def is_join_closed(self) -> bool:
-        tautology = self.PatternType.get_min_pattern()
-        controversy = self.PatternType.get_max_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
-        for p in self.premises:
-            for q in self.premises:
+        premises = self.premises
+        controversy = self.PatternType.get_max_pattern()
+        for p in premises:
+            for q in premises:
                 join = p | q
                 if join == controversy:
                     continue
 
-                if join not in self.premises:
+                if join not in premises:
                     return False
                 if (p, join) not in self.priorities or (q, join) not in self.priorities:
                     return False
