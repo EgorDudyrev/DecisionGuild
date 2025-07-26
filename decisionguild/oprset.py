@@ -51,6 +51,9 @@ class OPRSet:
             subsumption_order = {
                 (premise, other) for premise in predictions for other in predictions if premise <= other
             }
+        else:
+            subsumption_order = self._transitive_closure(subsumption_order)
+            subsumption_order |= {(premise, premise) for premise in predictions}
 
         priorities = subsumption_order if priorities is None else priorities
         assert all(premise in predictions for pair in priorities for premise in pair), \
@@ -165,7 +168,8 @@ class OPRSet:
     @classmethod
     def from_sklearn_dtree(cls, decision_tree, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
         predictions, priorities = converters.from_sklearn_dtree(decision_tree, feature_names=feature_names)
-        return cls(predictions, priorities, subsumption_order=priorities)
+        PType = next(iter(predictions.keys())).__class__
+        return cls.init_decision_tree(predictions, PType, subsumption_order=priorities)
 
     @classmethod
     def from_sklearn_rforest(cls, random_forest, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
@@ -366,6 +370,8 @@ class OPRSet:
         for left, right in relation:
             if left not in relation_dict:
                 relation_dict[left] = set()
+            if right not in relation_dict:
+                relation_dict[right] = set()
             relation_dict[left].add(right)
 
         new_relation_added = True
@@ -383,6 +389,8 @@ class OPRSet:
         for left, right in relation:
             if left not in relation_dict:
                 relation_dict[left] = set()
+            if right not in relation_dict:
+                relation_dict[right] = set()
             if left != right:
                 relation_dict[left].add(right)
 
