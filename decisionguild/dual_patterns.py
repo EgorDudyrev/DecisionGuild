@@ -8,6 +8,10 @@ class DualPattern(Pattern):
     def __neg__(self) -> Optional['DualPattern']:
         raise NotImplementedError()
 
+    @property
+    def is_controversy(self) -> bool:
+        raise NotImplementedError()
+
 
 class DualIntervalPattern(DualPattern, bip.IntervalPattern):
     def __neg__(self) -> Optional['DualIntervalPattern']:
@@ -25,6 +29,10 @@ class DualIntervalPattern(DualPattern, bip.IntervalPattern):
             return self.__class__((tautology.value[0], (self.lower_bound, not self.is_lower_bound_closed),))
 
         return None
+
+    @property
+    def is_controversy(self) -> bool:
+        return self == self.get_max_pattern()
 
 
 class DualCategorySetPattern(DualPattern, bip.CategorySetPattern):
@@ -50,3 +58,7 @@ class DualCartesianPattern(DualPattern, bip.CartesianPattern):
         if -v is None:
             return None
         return self.__class__({k: -v})
+
+    @property
+    def is_controversy(self) -> bool:
+        return any(dimension.is_controversy for dimension in self.value.values())

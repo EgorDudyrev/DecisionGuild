@@ -1,13 +1,12 @@
 from typing import TypeVar, Optional
 
-from paspailleur.pattern_structures.pattern import Pattern
-
+from decisionguild.dual_patterns import DualPattern
 from decisionguild.oprset import OPRSet
 
 
 class LinPRSet(OPRSet):
     TargetType = TypeVar("TargetType")
-    PatternType = TypeVar("PatternType", bound=Pattern)
+    PatternType = TypeVar("PatternType", bound=DualPattern)
 
     #############
     # Class API #
@@ -16,8 +15,8 @@ class LinPRSet(OPRSet):
             self,
             predictions: dict[PatternType, TargetType] = None,
             PatternType = None,
-            subsumption_order: set[tuple[Pattern, Pattern]] = None,
-            priorities: set[tuple[Pattern, Pattern]] = None,  # for backwards compatibility with OPRSet. does not affect anything
+            subsumption_order: set[tuple[DualPattern, DualPattern]] = None,
+            priorities: set[tuple[DualPattern, DualPattern]] = None,  # for backwards compatibility with OPRSet. does not affect anything
     ):
         priorities = {(p, p) for p in predictions}
         super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order)
@@ -25,7 +24,7 @@ class LinPRSet(OPRSet):
     ######################
     # ML model interface #
     ######################
-    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+    def predict_single(self, x: DualPattern) -> Optional[TargetType]:
         assert self._predictions is not None and self._priorities is not None,  \
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
 

@@ -2,15 +2,16 @@ from functools import reduce
 from typing import TypeVar, Optional, Union
 
 import numpy as np
-from paspailleur.pattern_structures.pattern import Pattern
 from bitarray import bitarray
 from bitarray.util import zeros as bazeros
 
 from decisionguild import converters
+from decisionguild.dual_patterns import DualPattern
+
 
 class OPRSet:
     TargetType = TypeVar("TargetType")
-    PatternType = TypeVar("PatternType", bound=Pattern)
+    PatternType = TypeVar("PatternType", bound=DualPattern)
 
     #############
     # Class API #
@@ -19,9 +20,9 @@ class OPRSet:
     def __init__(
             self,
             predictions: dict[PatternType, TargetType] = None,
-            priorities: set[tuple[Pattern, Pattern]] = None,
+            priorities: set[tuple[DualPattern, DualPattern]] = None,
             PatternType = None,
-            subsumption_order: set[tuple[Pattern, Pattern]] = None
+            subsumption_order: set[tuple[DualPattern, DualPattern]] = None
     ):
         """Initialise OrderedPatternRuleSet using `predictions` and `priorities` (if given)
 
@@ -64,22 +65,22 @@ class OPRSet:
         for _, right in subsumption_order:
             n_subsumed[right] += 1
 
-        self._premises: list[Pattern] = sorted(predictions, key=lambda premise: n_subsumed[premise])
+        self._premises: list[DualPattern] = sorted(predictions, key=lambda premise: n_subsumed[premise])
         self._predictions: list[self.TargetType] = [predictions[premise] for premise in self._premises]
         self._priorities = priorities
         self.PatternType = PatternType
         self._subsumption_order = subsumption_order
 
     @property
-    def premises(self) -> set[Pattern]:
+    def premises(self) -> set[DualPattern]:
         return set(self._premises)
 
     @property
-    def predictions(self) -> dict[Pattern, TargetType]:
+    def predictions(self) -> dict[DualPattern, TargetType]:
         return dict(zip(self._premises, self._predictions))
 
     @property
-    def priorities(self) -> set[tuple[Pattern, Pattern]]:
+    def priorities(self) -> set[tuple[DualPattern, DualPattern]]:
         return set(self._priorities)
 
     @property
@@ -132,7 +133,7 @@ class OPRSet:
         return True
 
     @classmethod
-    def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
+    def init_rule_set(cls, predictions: dict[DualPattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
         PatternType = next(iter(predictions.keys())).__class__ if PatternType is None else PatternType
         tautology = PatternType.get_min_pattern()
 
@@ -142,7 +143,7 @@ class OPRSet:
         return ruleset
 
     @classmethod
-    def init_decision_list(cls, predictions: list[tuple[Pattern, TargetType]], PatternType = None, subsumption_order = None) -> 'OPRSet':
+    def init_decision_list(cls, predictions: list[tuple[DualPattern, TargetType]], PatternType = None, subsumption_order = None) -> 'OPRSet':
         premises = [premise for premise, _ in predictions]
         priorities = {(q, p) for p, q in zip(premises, premises[1:])}
         dlist = cls(dict(predictions), priorities, PatternType=PatternType, subsumption_order=subsumption_order)
@@ -150,7 +151,7 @@ class OPRSet:
         return dlist
 
     @classmethod
-    def init_decision_tree(cls, predictions: dict[Pattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
+    def init_decision_tree(cls, predictions: dict[DualPattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
         dtree = cls(predictions, PatternType=PatternType, subsumption_order=subsumption_order)
         assert dtree.is_decision_tree()
         return dtree
@@ -178,10 +179,10 @@ class OPRSet:
     ######################
     # ML model interface #
     ######################
-    def predict(self, X: list[Pattern]) -> np.ndarray[Optional[TargetType]]:
+    def predict(self, X: list[DualPattern]) -> np.ndarray[Optional[TargetType]]:
         return np.array([self.predict_single(x) for x in X])
 
-    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+    def predict_single(self, x: DualPattern) -> Optional[TargetType]:
         assert self._predictions is not None and self._priorities is not None,  \
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
 
@@ -212,7 +213,6 @@ class OPRSet:
             subpremises[superpremise_id][subpremise_id] = True
         known_controversies: list[bitarray] = [bazeros(len(premise_list)) for _ in premise_list]
 
-        controversy = self.PatternType.get_max_pattern()
         i = 0
         while i < len(premise_list):
             premises_to_test = ~subpremises[i] & ~known_controversies[i]
@@ -225,7 +225,7 @@ class OPRSet:
                 p, q = premise_list[i], premise_list[j]
 
                 join = p | q
-                if join == controversy:
+                if join.is_controversy:
                     known_controversies[i][j] = known_controversies[j][i] = True
                     superpremises_i, superpremises_j = [], []
                     for id, subs in enumerate(subpremises):
@@ -282,11 +282,10 @@ class OPRSet:
             return False
 
         premises = self.premises
-        controversy = self.PatternType.get_max_pattern()
         for p in premises:
             for q in premises:
                 join = p | q
-                if join == controversy:
+                if join.is_controversy:
                     continue
 
                 if join not in premises:
@@ -319,10 +318,10 @@ class OPRSet:
         scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
         return self.__class__(scaled_predictions, priorities=self.priorities, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
 
-    def traverse(self, X: list[Pattern]) -> list[tuple[set[Pattern], set[Pattern]]]:
+    def traverse(self, X: list[DualPattern]) -> list[tuple[set[DualPattern], set[DualPattern]]]:
         return [self.traverse_single(x) for x in X]
 
-    def traverse_single(self, x: PatternType) -> tuple[set[Pattern], set[Pattern]]:
+    def traverse_single(self, x: PatternType) -> tuple[set[DualPattern], set[DualPattern]]:
         all_successors = {premise: set() for premise in self.premises}
         for left, right in self._subsumption_order:
             if left != right:
@@ -356,7 +355,7 @@ class OPRSet:
     # Helping functions #
     #####################
     @staticmethod
-    def _transitive_closure(relation: set[tuple[Pattern, Pattern]]) -> set[tuple[Pattern, Pattern]]:
+    def _transitive_closure(relation: set[tuple[DualPattern, DualPattern]]) -> set[tuple[DualPattern, DualPattern]]:
         relation_dict = dict()  # TODO: Replace with groupby function
         for left, right in relation:
             if left not in relation_dict:
@@ -373,7 +372,7 @@ class OPRSet:
         return {(a, b) for a, bs in relation_dict.items() for b in bs}
 
     @staticmethod
-    def _transitive_reduction(relation: set[tuple[Pattern, Pattern]]) -> set[tuple[Pattern, Pattern]]:
+    def _transitive_reduction(relation: set[tuple[DualPattern, DualPattern]]) -> set[tuple[DualPattern, DualPattern]]:
         relation_dict = dict()
         for left, right in relation:
             if left not in relation_dict:
@@ -392,17 +391,17 @@ class OPRSet:
 class OPRClassifier(OPRSet):
     TargetType = int
 
-    def predict_single_proba(self, x: Pattern) -> Optional[np.ndarray]:
+    def predict_single_proba(self, x: DualPattern) -> Optional[np.ndarray]:
         return super().predict_single(x)
 
-    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+    def predict_single(self, x: DualPattern) -> Optional[TargetType]:
         return int(np.argmax(self.predict_single_proba(x)))
 
-    def predict_proba(self, X: list[Pattern]) -> np.ndarray:
+    def predict_proba(self, X: list[DualPattern]) -> np.ndarray:
         return np.vstack([self.predict_single_proba(x) for x in X])
 
     @property
-    def predictions(self) -> dict[Pattern, np.ndarray[float]]:
+    def predictions(self) -> dict[DualPattern, np.ndarray[float]]:
         return super().predictions
 
     def join_closure(self) -> 'OPRClassifier':

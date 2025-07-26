@@ -1,5 +1,6 @@
 from paspailleur.pattern_structures import built_in_patterns as bip
 
+from decisionguild.dual_patterns import DualIntervalPattern
 from decisionguild.oprset import OPRSet
 from decisionguild.linprset import LinPRSet
 
@@ -46,10 +47,10 @@ def test_add():
     assert model_sum.priorities == model_sum_true.priorities
 
 def test_join_closure():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
     model = LinPRSet({t: 1, p: 2, q: 4})
     closure_true = OPRSet({t: 1, p: 3, q: 5, r: 7})
 

@@ -3,7 +3,7 @@ import pytest
 
 from decisionguild.linprset import LinPRSet
 from decisionguild.oprset import OPRSet, OPRClassifier
-from decisionguild.dual_patterns import DualIntervalPattern
+from decisionguild.dual_patterns import DualIntervalPattern, DualCartesianPattern
 from paspailleur.pattern_structures import built_in_patterns as bip
 
 
@@ -193,10 +193,10 @@ def test_is_join_closed():
     assert not model.is_join_closed()
 
 def test_join_closure():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
     model = OPRSet({t: 0, p: 2, q: 1})
     closure_true = OPRSet({t: 0, p: 2, q: 1, r: 1.5})
     closure_fact = model.join_closure()
@@ -204,7 +204,7 @@ def test_join_closure():
     assert closure_fact.predictions == closure_true.predictions
     assert closure_fact.priorities == closure_true.priorities
 
-    s = bip.IntervalPattern('>50')
+    s = DualIntervalPattern('>50')
     model = OPRSet({t: 0, p: 2, q: 1, s: 10})
     closure_true = OPRSet({t: 0, p: 2, q: 1, r: 1.5, s: 10})
     closure_fact = model.join_closure()
@@ -258,10 +258,10 @@ def test_from_sklearn_dtree():
 
 
 def test_linearise():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
     model = OPRSet({t: 0, p: 2, q: 1, r: 1.5})
     linearised = model.linearise()
     linearised_true = LinPRSet({t: 0, p: 2, q: 1, r: -1.5})
@@ -271,10 +271,10 @@ def test_linearise():
 
 
 def test_add():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
 
     model1 = OPRSet.init_rule_set({t: 1, p: 2, q: 4})
     model2 = OPRSet.init_decision_list([(r, 20), (q, 15), (t, 10)])
