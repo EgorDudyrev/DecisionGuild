@@ -3,6 +3,8 @@ from typing import TypeVar, Optional, Union
 
 import numpy as np
 from paspailleur.pattern_structures.pattern import Pattern
+from bitarray import bitarray
+from bitarray.util import zeros as bazeros
 
 from decisionguild import converters
 
@@ -202,39 +204,56 @@ class OPRSet:
     # Model manipulation #
     ######################
     def join_closure(self) -> 'OPRSet':
-        premise_list = list(self.premises)
-        subpremises = {premise: set() for premise in premise_list}
+        premise_list = list(self._premises)
+        premise_id_map = {premise: id for id, premise in enumerate(premise_list)}
+        subpremises: list[bitarray] = [bazeros(len(premise_list)) for _ in premise_list]
         for subpremise, superpremise in self._subsumption_order:
-            subpremises[superpremise].add(subpremise)
-        premise_list = sorted(subpremises.keys(), key=lambda premise: len(subpremises[premise]))
+            subpremise_id, superpremise_id = premise_id_map[subpremise], premise_id_map[superpremise]
+            subpremises[superpremise_id][subpremise_id] = True
 
         controversy = self.PatternType.get_max_pattern()
         i = 0
         while i < len(premise_list):
-            for j in range(i):
+            premises_to_test = ~subpremises[i]
+            premises_to_test[i:] = False
+            k = 0
+            while premises_to_test.any():
+                j = premises_to_test.find(True)
+                premises_to_test[j] = False
+
                 p, q = premise_list[i], premise_list[j]
-                if p in subpremises[q] or q in subpremises[p]:
-                    continue
 
                 join = p | q
-                if join == controversy or join in subpremises:
+                if join == controversy:
                     continue
-                premise_list.append(join)
+                if join in premise_id_map:
+                    join_id = premise_id_map[join]
+                    subpremises[join_id] |= subpremises[i] | subpremises[j]
+                    continue
 
-                subpremises[join] = subpremises[p] | subpremises[q]
-                for other in set(subpremises) - set(subpremises[join]):
-                    if p in subpremises[other] and q in subpremises[other]:
-                        subpremises[other].add(join)
-                        continue
-                    if join <= other:
-                        subpremises[other].add(join)
-                        continue
-                    if other <= join:
-                        subpremises[join].add(other)
+                k += 1
+                join_id = i+k
+                premise_list.insert(join_id, join)
+                for premise in premise_id_map:
+                    if premise_id_map[premise] >= join_id:
+                        premise_id_map[premise] += 1
+                premise_id_map[join] = join_id
+                assert all(premise_list[premise_id_map[premise]] == premise for premise in premise_list)
+
+                for ba in subpremises:
+                    ba.insert(join_id, ba[i] and ba[j])  # if premise is greater than p and q, then it is greater than join
+                subpremises.insert(join_id, subpremises[i] | subpremises[j])
+                subpremises[join_id][join_id] = True
+
+                # the following cycle is important. although I do not understand why
+                for other_id in subpremises[join_id].search(False, 0, join_id):
+                    subpremises[join_id][other_id] = premise_list[other_id] <= join
+
             i += 1
 
         predictions = {premise: self.predict_single(premise) for premise in premise_list}
-        subsumption_order = {(sub, superpremise) for superpremise, subs in subpremises.items() for sub in subs}
+        subsumption_order = {(premise_list[sub_id], premise_list[super_id])
+                             for super_id, subs in enumerate(subpremises) for sub_id in subs.search(True)}
         return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
 
 
