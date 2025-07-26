@@ -87,6 +87,12 @@ class OPRSet:
     def contains_tautology(self) -> bool:
         return self._premises[0] == self.PatternType.get_min_pattern()
 
+    def __len__(self) -> int:
+        return len(self._premises)
+
+    def __eq__(self, other) -> bool:
+        return self.premises == other.premises and self.predictions == other.predictions and self.priorities == other.priorities
+
     def is_rule_set(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
         if not self.contains_tautology:
@@ -403,6 +409,11 @@ class OPRClassifier(OPRSet):
     @property
     def predictions(self) -> dict[DualPattern, np.ndarray[float]]:
         return super().predictions
+
+    def __eq__(self, other) -> bool:
+        predictions_fixed = {p: pred.tolist() for p, pred in self.predictions.items()}
+        others_fixed = {p: pred.tolist() for p, pred in other.predictions.items()}
+        return self.premises == other.premises and predictions_fixed == others_fixed and self.priorities == other.priorities
 
     def join_closure(self) -> 'OPRClassifier':
         closure = super().join_closure()
