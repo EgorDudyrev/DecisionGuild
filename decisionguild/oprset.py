@@ -210,12 +210,13 @@ class OPRSet:
         for subpremise, superpremise in self._subsumption_order:
             subpremise_id, superpremise_id = premise_id_map[subpremise], premise_id_map[superpremise]
             subpremises[superpremise_id][subpremise_id] = True
+        known_controversies: list[bitarray] = [bazeros(len(premise_list)) for _ in premise_list]
 
         controversy = self.PatternType.get_max_pattern()
         i = 0
         while i < len(premise_list):
-            premises_to_test = ~subpremises[i]
-            premises_to_test[i:] = False
+            premises_to_test = ~subpremises[i] & ~known_controversies[i]
+            premises_to_test = premises_to_test[:i]
             k = 0
             while premises_to_test.any():
                 j = premises_to_test.find(True)
@@ -225,7 +226,17 @@ class OPRSet:
 
                 join = p | q
                 if join == controversy:
+                    known_controversies[i][j] = known_controversies[j][i] = True
+                    superpremises_i, superpremises_j = [], []
+                    for id, subs in enumerate(subpremises):
+                        if subs[i]: superpremises_i.append(id)
+                        if subs[j]: superpremises_j.append(id)
+                    for super_i in superpremises_i:
+                        for super_j in superpremises_j:
+                            known_controversies[super_i][super_j] = known_controversies[super_j][super_i] = True
+                    premises_to_test = premises_to_test & ~known_controversies[i][:i]
                     continue
+
                 if join in premise_id_map:
                     join_id = premise_id_map[join]
                     subpremises[join_id] |= subpremises[i] | subpremises[j]
@@ -248,6 +259,15 @@ class OPRSet:
                 # the following cycle is important. although I do not understand why
                 for other_id in subpremises[join_id].search(False, 0, join_id):
                     subpremises[join_id][other_id] = premise_list[other_id] <= join
+
+                join_subs = subpremises[join_id][:join_id]
+                for ba in known_controversies:
+                    ba.insert(join_id, (ba[:join_id] & join_subs).any())
+                join_controversies = ([known_controversies[other][join_id] for other in range(join_id)]+[False]+
+                                      [known_controversies[other][join_id] for other in range(join_id, len(premise_list)-1)])
+                known_controversies.insert(join_id, bitarray(join_controversies))
+                assert len(known_controversies) == len(premise_list)
+                assert all(len(ba)==len(premise_list) for ba in known_controversies)
 
             i += 1
 
