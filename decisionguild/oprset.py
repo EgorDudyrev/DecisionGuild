@@ -63,7 +63,7 @@ class OPRSet:
             n_subsumed[right] += 1
 
         self._premises: list[Pattern] = sorted(predictions, key=lambda premise: n_subsumed[premise])
-        self._predictions = predictions
+        self._predictions: list[self.TargetType] = [predictions[premise] for premise in self._premises]
         self._priorities = priorities
         self.PatternType = PatternType
         self._subsumption_order = subsumption_order
@@ -74,7 +74,7 @@ class OPRSet:
 
     @property
     def predictions(self) -> dict[Pattern, TargetType]:
-        return dict(self._predictions)
+        return dict(zip(self._premises, self._predictions))
 
     @property
     def priorities(self) -> set[tuple[Pattern, Pattern]]:
@@ -194,7 +194,8 @@ class OPRSet:
         else:
             maxpriority_premises = maximal_premises
 
-        predictions = [self.predictions[premise] for premise in maxpriority_premises]
+        predictions_dict = self.predictions
+        predictions = [predictions_dict[premise] for premise in maxpriority_premises]
         return sum(predictions)/len(predictions) if predictions else None
 
     ######################

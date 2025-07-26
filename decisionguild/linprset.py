@@ -32,7 +32,8 @@ class LinPRSet(OPRSet):
         x = self.PatternType(x) if not isinstance(x, self.PatternType) else x
 
         applied_premises = {premise for premise in self.premises if premise <= x}
-        predictions = [self.predictions[premise] for premise in applied_premises]
+        predictions_dict = self.predictions
+        predictions = [predictions_dict[premise] for premise in applied_premises]
         return sum(predictions) if predictions else None
 
     ######################
