@@ -5,6 +5,8 @@ import numpy as np
 from bitarray import bitarray
 from bitarray.util import zeros as bazeros
 
+from tqdm.auto import tqdm
+
 from decisionguild import converters
 from decisionguild.dual_patterns import DualPattern
 from decisionguild import manipulation_algorithms as manalgos
@@ -238,9 +240,10 @@ class OPRSet:
             subpremise_id, superpremise_id = premise_id_map[subpremise], premise_id_map[superpremise]
             subpremises[superpremise_id][subpremise_id] = True
 
-        premise_list, subpremises = manalgos.join_closure_pattern(premise_list, subpremises, use_tqdm=use_tqdm)
+        #premise_list, subpremises = manalgos.join_closure_pattern(premise_list, subpremises, use_tqdm=use_tqdm)
+        premise_list, subpremises = manalgos.join_closure_atomic(premise_list, subpremises, use_tqdm=use_tqdm)
 
-        predictions = [self.predict_single(premise) for premise in premise_list]
+        predictions = [self.predict_single(premise) for premise in tqdm(premise_list, disable=not use_tqdm, desc='Compute predictions', unit_scale=True)]
         subsumption_order = {(premise_list[sub_id], premise_list[super_id])
                              for super_id, subs in enumerate(subpremises) for sub_id in subs.search(True)}
         return OPRSet(
