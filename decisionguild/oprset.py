@@ -7,6 +7,7 @@ from bitarray.util import zeros as bazeros
 
 from decisionguild import converters
 from decisionguild.dual_patterns import DualPattern
+from decisionguild import manipulation_algorithms as manalgos
 
 
 class OPRSet:
@@ -229,72 +230,15 @@ class OPRSet:
     ######################
     # Model manipulation #
     ######################
-    def join_closure(self) -> 'OPRSet':
+    def join_closure(self, use_tqdm: bool = False) -> 'OPRSet':
         premise_list = list(self._premises)
         premise_id_map = {premise: id for id, premise in enumerate(premise_list)}
         subpremises: list[bitarray] = [bazeros(len(premise_list)) for _ in premise_list]
         for subpremise, superpremise in self._subsumption_order:
             subpremise_id, superpremise_id = premise_id_map[subpremise], premise_id_map[superpremise]
             subpremises[superpremise_id][subpremise_id] = True
-        known_controversies: list[bitarray] = [bazeros(len(premise_list)) for _ in premise_list]
 
-        i = 0
-        while i < len(premise_list):
-            premises_to_test = ~subpremises[i] & ~known_controversies[i]
-            premises_to_test = premises_to_test[:i]
-            k = 0
-            while premises_to_test.any():
-                j = premises_to_test.find(True)
-                premises_to_test[j] = False
-
-                p, q = premise_list[i], premise_list[j]
-
-                join = p | q
-                if join.is_controversy:
-                    known_controversies[i][j] = known_controversies[j][i] = True
-                    superpremises_i, superpremises_j = [], []
-                    for id, subs in enumerate(subpremises):
-                        if subs[i]: superpremises_i.append(id)
-                        if subs[j]: superpremises_j.append(id)
-                    for super_i in superpremises_i:
-                        for super_j in superpremises_j:
-                            known_controversies[super_i][super_j] = known_controversies[super_j][super_i] = True
-                    premises_to_test = premises_to_test & ~known_controversies[i][:i]
-                    continue
-
-                if join in premise_id_map:
-                    join_id = premise_id_map[join]
-                    subpremises[join_id] |= subpremises[i] | subpremises[j]
-                    continue
-
-                k += 1
-                join_id = i+k
-                premise_list.insert(join_id, join)
-                for premise in premise_id_map:
-                    if premise_id_map[premise] >= join_id:
-                        premise_id_map[premise] += 1
-                premise_id_map[join] = join_id
-                assert all(premise_list[premise_id_map[premise]] == premise for premise in premise_list)
-
-                for ba in subpremises:
-                    ba.insert(join_id, ba[i] and ba[j])  # if premise is greater than p and q, then it is greater than join
-                subpremises.insert(join_id, subpremises[i] | subpremises[j])
-                subpremises[join_id][join_id] = True
-
-                # the following cycle is important. although I do not understand why
-                for other_id in subpremises[join_id].search(False, 0, join_id):
-                    subpremises[join_id][other_id] = premise_list[other_id] <= join
-
-                join_subs = subpremises[join_id][:join_id]
-                for ba in known_controversies:
-                    ba.insert(join_id, (ba[:join_id] & join_subs).any())
-                join_controversies = ([known_controversies[other][join_id] for other in range(join_id)]+[False]+
-                                      [known_controversies[other][join_id] for other in range(join_id, len(premise_list)-1)])
-                known_controversies.insert(join_id, bitarray(join_controversies))
-                assert len(known_controversies) == len(premise_list)
-                assert all(len(ba)==len(premise_list) for ba in known_controversies)
-
-            i += 1
+        premise_list, subpremises = manalgos.join_closure_pattern(premise_list, subpremises, use_tqdm=use_tqdm)
 
         predictions = [self.predict_single(premise) for premise in premise_list]
         subsumption_order = {(premise_list[sub_id], premise_list[super_id])
