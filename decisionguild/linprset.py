@@ -39,6 +39,9 @@ class LinPRSet(OPRSet):
     # Model manipulation #
     ######################
     def __add__(self, other):
+        if other == 0:  # for the sake of using standard sum() operation
+            return self
+
         predictions = dict(self.predictions)
         for premise, other_prediction in other.predictions.items():
             if premise in predictions:
@@ -55,6 +58,5 @@ class LinPRSet(OPRSet):
                     subsumption_order.add((q, p))
         return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
 
-    def join_closure(self) -> 'OPRSet':
-        closure = super().join_closure()
-        return OPRSet(closure.predictions, PatternType=closure.PatternType, subsumption_order=closure._subsumption_order)
+    def __radd__(self, other):
+        return self + other

@@ -94,7 +94,8 @@ class OPRSet:
         return len(self._premises)
 
     def __eq__(self, other) -> bool:
-        return self.premises == other.premises and self.predictions == other.predictions and self.priorities == other.priorities
+        return (type(self) == type(other) and self.premises == other.premises
+                and self.predictions == other.predictions and self.priorities == other.priorities)
 
     def is_rule_set(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
@@ -321,6 +322,9 @@ class OPRSet:
         return LinPRSet(predictions, subsumption_order=closure._subsumption_order)
 
     def __add__(self, other: 'OPRSet') -> 'OPRSet':
+        if other == 0:  # for the sake of applying standard `sum()` function
+            return self
+
         closure = (self.linearise() + other.linearise()).join_closure()
         return self.__class__(predictions=closure.predictions, priorities=closure.priorities, PatternType=closure.PatternType)
 
@@ -419,6 +423,8 @@ class OPRClassifier(OPRSet):
         return super().predictions
 
     def __eq__(self, other) -> bool:
+        if type(self) != type(other):
+            return False
         predictions_fixed = {p: pred.tolist() for p, pred in self.predictions.items()}
         others_fixed = {p: pred.tolist() for p, pred in other.predictions.items()}
         return self.premises == other.premises and predictions_fixed == others_fixed and self.priorities == other.priorities
