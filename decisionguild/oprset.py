@@ -19,10 +19,12 @@ class OPRSet:
 
     def __init__(
             self,
-            predictions: dict[PatternType, TargetType] = None,
+            predictions: Union[dict[PatternType, TargetType], list[TargetType]] = None,
             priorities: set[tuple[DualPattern, DualPattern]] = None,
             PatternType = None,
-            subsumption_order: set[tuple[DualPattern, DualPattern]] = None
+            subsumption_order: set[tuple[DualPattern, DualPattern]] = None,
+            premises: Union[set[PatternType], list[PatternType]] = None,
+            check_input: bool = True,
     ):
         """Initialise OrderedPatternRuleSet using `predictions` and `priorities` (if given)
 
@@ -32,10 +34,22 @@ class OPRSet:
         If neither `predictions` nor `priorities` are given,
         then the model should be fitted further on.
         """
+        if not check_input:
+            self._premises = premises
+            self._predictions = predictions
+            self._priorities = priorities
+            self.PatternType = PatternType
+            self._subsumption_order = subsumption_order
+            return
+
         if predictions is None:
             self._predictions, self._priorities = None, None
             self._subsumption_order = None
+            self._premises = None
             return
+
+        if not isinstance(predictions, dict):
+            predictions = dict(zip(premises, predictions))
 
         if PatternType is None:
             PatternType = next(iter(predictions.keys())).__class__
@@ -282,11 +296,14 @@ class OPRSet:
 
             i += 1
 
-        predictions = {premise: self.predict_single(premise) for premise in premise_list}
+        predictions = [self.predict_single(premise) for premise in premise_list]
         subsumption_order = {(premise_list[sub_id], premise_list[super_id])
                              for super_id, subs in enumerate(subpremises) for sub_id in subs.search(True)}
-        return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
-
+        return OPRSet(
+            premises=premise_list, predictions=predictions, priorities=subsumption_order,
+            PatternType=self.PatternType, subsumption_order=subsumption_order,
+            check_input=False
+        )
 
     def is_join_closed(self) -> bool:
         if not self.contains_tautology:
@@ -431,6 +448,8 @@ class OPRClassifier(OPRSet):
 
     def join_closure(self) -> 'OPRClassifier':
         closure = super().join_closure()
-        predictions = {premise: self.predict_single_proba(premise) for premise in closure.premises}
-        return self.__class__(predictions=predictions, priorities=closure.priorities, PatternType=closure.PatternType,
-                              subsumption_order=closure._subsumption_order)
+        predictions = [self.predict_single_proba(premise) for premise in closure._premises]
+        return self.__class__(
+            predictions=predictions, priorities=closure.priorities, PatternType=closure.PatternType,
+            subsumption_order=closure._subsumption_order, premises=closure._premises, check_input=False
+        )
