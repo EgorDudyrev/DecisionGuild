@@ -241,7 +241,8 @@ class OPRSet:
             subpremises[superpremise_id][subpremise_id] = True
 
         #premise_list, subpremises = manalgos.join_closure_pattern(premise_list, subpremises, use_tqdm=use_tqdm)
-        premise_list, subpremises = manalgos.join_closure_atomic(premise_list, subpremises, use_tqdm=use_tqdm)
+        #premise_list, subpremises = manalgos.join_closure_atomic(premise_list, subpremises, use_tqdm=use_tqdm)
+        premise_list, subpremises = manalgos.join_closure_cbo_icpj(premise_list, subpremises, use_tqdm=use_tqdm)
 
         predictions = [self.predict_single(premise) for premise in tqdm(premise_list, disable=not use_tqdm, desc='Compute predictions', unit_scale=True)]
         subsumption_order = {(premise_list[sub_id], premise_list[super_id])

@@ -188,3 +188,185 @@ def join_closure_atomic(
     subsumption_closed = order_bitarrays([closed_premises_dict[p] for p in premises_closed])
 
     return premises_closed, subsumption_closed
+
+
+def join_closure_cbo_icpj(
+        premises: list[DualPattern], subsumption: list[bitarray], use_tqdm: bool = False
+) -> tuple[list[DualPattern], list[bitarray]]:
+    def activate_index(idx: int, ba: bitarray) -> bitarray:
+        new_ba = bitarray(ba)
+        new_ba[idx] = True
+        return new_ba
+
+    def deactivate_index(idx: int, ba: bitarray) -> bitarray:
+        new_ba = bitarray(ba)
+        new_ba[idx] = False
+        return new_ba
+
+    proper_subsumption = [deactivate_index(i, ba) for i, ba in enumerate(subsumption)]
+    proper_superpremises = [bazeros(len(proper_subsumption)) for _ in proper_subsumption]
+    for i, subs in enumerate(proper_subsumption):
+        for j in subs.search(True):
+            proper_superpremises[j][i] = True
+
+    PatternType = premises[0].__class__
+    tautology = PatternType.get_min_pattern()
+    def join_premises(idxs: bitarray, premises_: list[DualPattern]):
+        return reduce(PatternType.__or__, (premises_[i] for i in idxs.search(True)), tautology)
+
+    def canonicity_test(
+            premise_list: list[DualPattern], join: DualPattern,
+            premises_to_test: bitarray, superpremise_relation: list[bitarray],
+            rightmost_index: int
+    ) -> bool:
+        if rightmost_index == -1:
+            return True
+        i = 0
+        while True:
+            i = premises_to_test.find(True, i, rightmost_index)
+            if i == -1:  # no more premises to test
+                break
+
+            if premise_list[i] <= join:
+                return False
+            # join is not greater than i-th premise => join is not greater than any superpattern of i-th premise
+            premises_to_test &= ~superpremise_relation[i]
+            i += 1
+        return True
+
+    def find_newly_covered_premises(
+            premise_list: list[DualPattern], join: DualPattern,
+            premises_to_test: bitarray, superpremise_relation: list[bitarray],
+            leftmost_index: int
+    ) -> bitarray:
+        newly_covered_premises = bazeros(len(premise_list))
+        i = leftmost_index
+        while True:
+            i = premises_to_test.find(True, i)
+            if i == -1: break
+
+            if premise_list[i] <= join:
+                newly_covered_premises[i] = True
+            else:  # if join is not greater than i-th premise, then it is not greater than any of its superpremise
+                premises_to_test &= ~superpremise_relation[i]
+            i += 1
+        return newly_covered_premises
+
+    def select_minimal_premises(premises_to_test: bitarray, superpremise_relation: list[bitarray]) -> bitarray:
+        minimal_premises = bazeros(len(premises_to_test))
+        i = 0
+        while True:
+            i = premises_to_test.find(True, i)
+            if i == -1: break
+            minimal_premises[i] = True
+            premises_to_test &= ~superpremise_relation[i]
+            i += 1
+        return minimal_premises
+
+    def select_maximal_premises(premises_to_test: bitarray, subpremise_relation: list[bitarray]) -> bitarray:
+        max_premises = bitarray(premises_to_test)
+        j = len(premises_to_test)
+        while True:
+            j = max_premises.find(True, 0, j)
+            if j == -1: break
+            max_premises &= ~subpremise_relation[j]
+        return max_premises
+
+    def find_righter_controversies(
+            premise_list: list[DualPattern], subpremise_relation: list[bitarray], superpremise_relation: list[bitarray],
+    ) -> list[bitarray]:
+        righter_controversies: list[bitarray] = []  # bitarrays contains all pairs (i, j) s.t. i<j, (premises[i]|premises[j]).is_controversy
+
+        for i, premise in enumerate(premise_list):
+            max_subpremises = select_maximal_premises(subpremise_relation[i], subpremise_relation)
+            controversies = reduce(bitarray.__or__, [righter_controversies[sub] for sub in max_subpremises.search(True)], bazeros(len(premise_list)))
+            premises_to_test = ~superpremise_relation[i] & ~controversies
+            j = i+1
+            while True:
+                j = premises_to_test.find(True, j)
+                if j == -1: break
+
+                other = premise_list[j]
+                if (premise | other).is_controversy:
+                    controversies[j] = True
+                    controversies |= superpremise_relation[j]
+                    premises_to_test &= ~superpremise_relation[j]
+                j += 1
+            righter_controversies.append(controversies)
+        return righter_controversies
+
+    def enumerate_joins(
+            premise_list: list[DualPattern],
+            subpremise_relation: list[bitarray], superpremise_relation: list[bitarray],
+            known_controversies: list[bitarray],
+    ) -> dict[DualPattern, bitarray]:
+        direct_superpremise_relation = [
+            select_minimal_premises(supers, superpremise_relation) for supers in superpremise_relation]
+
+        joins: dict[DualPattern, bitarray] = dict()
+        top_actives = top_implied_controversies = bazeros(len(premise_list))
+        top_next_candidates = bitarray([not subs.any() for subs in subpremise_relation])
+
+        pbar = tqdm(total=None, desc="Enumerate joins", disable=not use_tqdm, unit_scale=True)
+        stack = [(top_actives, -1, top_next_candidates, top_implied_controversies)]
+        while stack:
+            active_premises, last_added_i, all_next_candidates, implied_controversies = stack.pop()
+            join = join_premises(select_maximal_premises(active_premises, subpremise_relation), premise_list)
+            assert not join.is_controversy
+
+            if not canonicity_test(premise_list, join, ~active_premises&~implied_controversies, superpremise_relation, last_added_i):
+                continue
+
+            newly_covered_premises = find_newly_covered_premises(premise_list, join, ~active_premises, superpremise_relation, last_added_i+1)
+            covered_premises = active_premises | newly_covered_premises
+            joins[join] = covered_premises
+            pbar.update(1)
+
+            for i in newly_covered_premises.search(True):
+                all_next_candidates |= direct_superpremise_relation[i]
+                implied_controversies |= known_controversies[i]
+            direct_next_candidates = all_next_candidates & ~covered_premises & ~implied_controversies
+            i = last_added_i + 1
+            while True:
+                i = direct_next_candidates.find(True, i)
+                if i == -1: break
+                if basubset(subpremise_relation[i], covered_premises):
+                    direct_next_candidates &= ~superpremise_relation[i]
+                else:
+                    direct_next_candidates[i] = False
+                i += 1
+
+            for i in direct_next_candidates.search(True, last_added_i+1, right=True):
+                stack.append((
+                    activate_index(i, covered_premises),
+                    i,
+                    all_next_candidates | direct_superpremise_relation[i],
+                    implied_controversies | known_controversies[i]
+                ))
+        pbar.close()
+        return joins
+
+    def order_bitarrays(bitarrays: list[bitarray]) -> list[bitarray]:
+        subsumption: list[bitarray] = []
+        for ba_idx, ba in tqdm(enumerate(bitarrays), total=len(bitarrays), disable=not use_tqdm, desc='Order premises', unit_scale=True):
+            subsumed = activate_index(ba_idx, bazeros(len(bitarrays)))
+            candidates = ~bazeros(len(bitarrays))
+            i = ba_idx
+            while True:
+                i = candidates.find(True, 0, i, right=True)
+                if i == -1: break
+
+                if basubset(bitarrays[i], ba):
+                    transitives = subsumption[i]
+                    subsumed[i] = True
+                    subsumed |= transitives
+                    candidates &= ~transitives
+            subsumption.append(subsumed)
+        return subsumption
+
+    righter_controversies = find_righter_controversies(premises, proper_subsumption, proper_superpremises)
+    joins_closures_dict = enumerate_joins(premises, proper_subsumption, proper_superpremises, righter_controversies)
+
+    patterns_closed = sorted(joins_closures_dict, key=lambda p: joins_closures_dict[p].count())
+    subsumption_closed = order_bitarrays([joins_closures_dict[p] for p in patterns_closed])
+    return patterns_closed, subsumption_closed
