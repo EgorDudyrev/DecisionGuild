@@ -2,6 +2,7 @@ from functools import reduce
 
 from bitarray import bitarray, frozenbitarray as fbarray
 from bitarray.util import zeros as bazeros, subset as basubset
+from caspailleur.order import sort_intents_inclusion, inverse_order
 
 from tqdm.auto import tqdm
 
@@ -349,56 +350,13 @@ def join_closure_cbo_icpj(
         pbar.close()
         return joins
 
-    def order_bitarrays(bitarrays: list[bitarray]) -> list[bitarray]:
-        subsumption: list[bitarray] = []
-        for ba_idx, ba in tqdm(enumerate(bitarrays), total=len(bitarrays), disable=not use_tqdm, desc='Order premises', unit_scale=True):
-            subsumed = activate_index(ba_idx, bazeros(len(bitarrays)))
-            candidates = ~bazeros(len(bitarrays))
-            i = ba_idx
-            while True:
-                i = candidates.find(True, 0, i, right=True)
-                if i == -1: break
-
-                if basubset(bitarrays[i], ba):
-                    transitives = subsumption[i]
-                    subsumed[i] = True
-                    subsumed |= transitives
-                    candidates &= ~transitives
-            subsumption.append(subsumed)
-        return subsumption
-
-    def order_order_ideals(order_ideals: list[bitarray], subpremise_relation: list[bitarray]) -> list[bitarray]:
-        n_ideals = len(order_ideals)
-        ordering: dict[fbarray, bitarray] = {fbarray(order_ideals[0]): activate_index(0, bazeros(n_ideals))}
-
-        for oi_idx, order_ideal in tqdm(enumerate(order_ideals[1:], start=1), total=n_ideals-1,
-                                        disable=not use_tqdm, desc='Order premises', unit_scale=True):
-            sub_ideal_relation = bazeros(n_ideals)
-            sub_ideal_relation[oi_idx] = True
-
-            found_sub_ideals: list[bitarray] = []
-            stack = [(fbarray(order_ideal), len(order_ideal))]
-            while stack:
-                sub_ideal, last_removed = stack.pop(0)
-                if sub_ideal in ordering:
-                    transitives = ordering[sub_ideal]
-                    sub_ideal_relation |= transitives
-                    found_sub_ideals.append(sub_ideal)
-                    continue
-                if any(basubset(sub_ideal, found_ideal) for found_ideal in found_sub_ideals):
-                    continue
-                max_premises = select_maximal_premises(sub_ideal, subpremise_relation)
-                for i in max_premises.search(True, 0, last_removed, right=True):
-                    stack.append((fbarray(deactivate_index(i, sub_ideal)), i))
-
-            ordering[fbarray(order_ideal)] = sub_ideal_relation
-
-        return [ordering[fbarray(order_ideal)] for i, order_ideal in enumerate(order_ideals)]
-
     righter_controversies = find_righter_controversies(premises, proper_subsumption, proper_superpremises)
     joins_closures_dict = enumerate_joins(premises, proper_subsumption, proper_superpremises, righter_controversies)
 
     patterns_closed = sorted(joins_closures_dict, key=lambda p: joins_closures_dict[p].count())
-    #subsumption_closed = order_bitarrays([joins_closures_dict[p] for p in patterns_closed])
-    subsumption_closed = order_order_ideals([joins_closures_dict[p] for p in patterns_closed], proper_subsumption)
+
+    _, inclusion_closed = sort_intents_inclusion([joins_closures_dict[p] for p in patterns_closed]+[~bazeros(len(premises))], use_tqdm=use_tqdm, return_transitive_order=True)
+    subsumption_closed = [activate_index(i, ba) for i, ba in enumerate(inverse_order(inclusion_closed))]
+    subsumption_closed = [ba[:-1] for ba in subsumption_closed[:-1]]
+
     return patterns_closed, subsumption_closed
