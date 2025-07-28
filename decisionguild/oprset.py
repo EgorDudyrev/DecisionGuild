@@ -4,6 +4,7 @@ from typing import TypeVar, Optional, Union
 import numpy as np
 from bitarray import bitarray
 from bitarray.util import zeros as bazeros
+from caspailleur import inverse_order
 
 from tqdm.auto import tqdm
 
@@ -85,11 +86,21 @@ class OPRSet:
         for _, right in subsumption_order:
             n_subsumed[right] += 1
 
-        self._premises: list[DualPattern] = sorted(predictions, key=lambda premise: n_subsumed[premise])
+        premises = sorted(predictions, key=lambda premise: n_subsumed[premise])
+        premise_idx_map = {premise: idx for idx, premise in enumerate(premises)}
+        priorities_ba = [bazeros(len(premises)) for _ in premises]
+        for left, right in priorities:
+            priorities_ba[premise_idx_map[left]][premise_idx_map[right]] = True
+        subsumption_ba = [bazeros(len(premises)) for _ in premises]
+        for left, right in subsumption_order:
+            subsumption_ba[premise_idx_map[left]][premise_idx_map[right]] = True
+
+
+        self._premises: list[DualPattern] = premises
         self._predictions: list[self.TargetType] = [predictions[premise] for premise in self._premises]
-        self._priorities = priorities
+        self._priorities: list[bitarray] = priorities_ba
         self.PatternType = PatternType
-        self._subsumption_order = subsumption_order
+        self._subsumption_order: list[bitarray] = subsumption_ba
 
     @property
     def premises(self) -> set[DualPattern]:
@@ -101,7 +112,13 @@ class OPRSet:
 
     @property
     def priorities(self) -> set[tuple[DualPattern, DualPattern]]:
-        return set(self._priorities)
+        return {(self._premises[left], self._premises[right])
+                for left, rights in enumerate(self._priorities) for right in rights.search(True)}
+
+    @property
+    def subsumption_order(self) -> set[tuple[DualPattern, DualPattern]]:
+        return {(self._premises[left], self._premises[right])
+                for left, rights in enumerate(self._subsumption_order) for right in rights.search(True)}
 
     @property
     def contains_tautology(self) -> bool:
@@ -140,7 +157,7 @@ class OPRSet:
         if not self.contains_tautology:
             return False
 
-        if self.priorities != self._subsumption_order:
+        if self._priorities != self._subsumption_order:
             return False
 
         priorities_reduced = self._transitive_reduction(self.priorities)
@@ -201,8 +218,10 @@ class OPRSet:
         for estimator, weight in zip(estimators[1:], weights[1:]):
             linearised += estimator.linearise().scale(weight)
         closure = linearised.join_closure()
-        return cls(closure.predictions, closure.priorities, PatternType=closure.PatternType,
-                   subsumption_order=closure._subsumption_order)
+        return cls(
+            closure._predictions, closure._priorities, PatternType=closure.PatternType,
+            subsumption_order=closure._subsumption_order, premises=closure._premises, check_input=False
+        )
 
     ######################
     # ML model interface #
@@ -217,7 +236,7 @@ class OPRSet:
         x = self.PatternType(x) if not isinstance(x, self.PatternType) else x
         applied_premises, maximal_premises = self.traverse_single(x)
 
-        if self.priorities != self._subsumption_order:
+        if self._priorities != self._subsumption_order:
             maxpriority_premises = {
                 premise for premise in applied_premises
                 if not any((premise, other) in self.priorities for other in applied_premises if other != premise)
@@ -234,19 +253,14 @@ class OPRSet:
     ######################
     def join_closure(self, use_tqdm: bool = False) -> 'OPRSet':
         premise_list = list(self._premises)
-        premise_id_map = {premise: id for id, premise in enumerate(premise_list)}
-        subpremises: list[bitarray] = [bazeros(len(premise_list)) for _ in premise_list]
-        for subpremise, superpremise in self._subsumption_order:
-            subpremise_id, superpremise_id = premise_id_map[subpremise], premise_id_map[superpremise]
-            subpremises[superpremise_id][subpremise_id] = True
+        subpremises = inverse_order(self._subsumption_order)
 
         #premise_list, subpremises = manalgos.join_closure_pattern(premise_list, subpremises, use_tqdm=use_tqdm)
         #premise_list, subpremises = manalgos.join_closure_atomic(premise_list, subpremises, use_tqdm=use_tqdm)
-        premise_list, subpremises = manalgos.join_closure_cbo_icpj(premise_list, subpremises, use_tqdm=use_tqdm)
+        premise_list, subpremises_closed = manalgos.join_closure_cbo_icpj(premise_list, subpremises, use_tqdm=use_tqdm)
+        subsumption_order = inverse_order(subpremises_closed)
 
         predictions = [self.predict_single(premise) for premise in tqdm(premise_list, disable=not use_tqdm, desc='Compute predictions', unit_scale=True)]
-        subsumption_order = {(premise_list[sub_id], premise_list[super_id])
-                             for super_id, subs in enumerate(subpremises) for sub_id in subs.search(True)}
         return OPRSet(
             premises=premise_list, predictions=predictions, priorities=subsumption_order,
             PatternType=self.PatternType, subsumption_order=subsumption_order,
@@ -284,7 +298,7 @@ class OPRSet:
         for premise in sorted(predecessors, key=lambda p: len(predecessors[p])):
             accumulated_prediction = sum(predictions[pred] for pred in predecessors[premise])
             predictions[premise] = closure.predictions[premise] - accumulated_prediction
-        return LinPRSet(predictions, subsumption_order=closure._subsumption_order)
+        return LinPRSet(predictions, subsumption_order=closure.subsumption_order)
 
     def __add__(self, other: 'OPRSet') -> 'OPRSet':
         if other == 0:  # for the sake of applying standard `sum()` function
@@ -294,17 +308,16 @@ class OPRSet:
         return self.__class__(predictions=closure.predictions, priorities=closure.priorities, PatternType=closure.PatternType)
 
     def scale(self, k: int) -> 'OPRSet':
-        scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
-        return self.__class__(scaled_predictions, priorities=self.priorities, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
+        scaled_predictions = [prediction * k for prediction in self._predictions]
+        return self.__class__(scaled_predictions, priorities=self._priorities, PatternType=self.PatternType,
+                              subsumption_order=self._subsumption_order, premises=self._premises, check_input=False)
 
     def traverse(self, X: list[DualPattern]) -> list[tuple[set[DualPattern], set[DualPattern]]]:
         return [self.traverse_single(x) for x in X]
 
     def traverse_single(self, x: PatternType) -> tuple[set[DualPattern], set[DualPattern]]:
-        all_successors = {premise: set() for premise in self.premises}
-        for left, right in self._subsumption_order:
-            if left != right:
-                all_successors[left].add(right)
+        all_successors = {self._premises[left]: {self._premises[r] for r in rights.search(True) if left != r}
+                          for left, rights in enumerate(self._subsumption_order)}
         direct_successors = dict()
         for premise, successors in all_successors.items():
             transitives = reduce(set.union, (all_successors[suc] for suc in successors), set())

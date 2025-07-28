@@ -1,5 +1,7 @@
 from typing import TypeVar, Optional
 
+from bitarray.util import zeros as bazeros
+
 from decisionguild.dual_patterns import DualPattern
 from decisionguild.oprset import OPRSet
 
@@ -17,9 +19,21 @@ class LinPRSet(OPRSet):
             PatternType = None,
             subsumption_order: set[tuple[DualPattern, DualPattern]] = None,
             priorities: set[tuple[DualPattern, DualPattern]] = None,  # for backwards compatibility with OPRSet. does not affect anything
+            premises: list[DualPattern] = None,  # for backwards compatibility with OPRSet
+            check_input: bool = True,  # for backwards compatibility with OPRSet
     ):
-        priorities = {(p, p) for p in predictions}
-        super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order)
+        if check_input:
+            priorities = {(p, p) for p in predictions}
+        else:
+            n_premises = len(predictions)
+
+            priorities = []
+            for i in range(n_premises):
+                ba = bazeros(n_premises)
+                ba[i] = True
+                priorities.append(ba)
+
+        super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order, premises=premises, check_input=check_input)
 
     ######################
     # ML model interface #
@@ -49,7 +63,7 @@ class LinPRSet(OPRSet):
             else:
                 predictions[premise] = other_prediction
 
-        subsumption_order = self._subsumption_order | other._subsumption_order
+        subsumption_order = self.subsumption_order | other.subsumption_order
         for p in self.premises:
             for q in other.premises - self.premises:
                 if p <= q:

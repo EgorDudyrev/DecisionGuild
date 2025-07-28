@@ -294,7 +294,7 @@ def test_from_sklearn_dtree():
     assert (preds_clf == preds_oprset).all()
 
     subsumption_order_true = {(p, q) for p in oprset.premises for q in oprset.premises if p<=q}
-    assert oprset._subsumption_order == subsumption_order_true
+    assert oprset.subsumption_order == subsumption_order_true
 
     # Iris data
     from sklearn.datasets import load_iris
