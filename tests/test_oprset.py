@@ -3,7 +3,7 @@ import pytest
 
 from decisionguild.linprset import LinPRSet
 from decisionguild.oprset import OPRSet, OPRClassifier
-from decisionguild.dual_patterns import DualIntervalPattern
+from decisionguild.dual_patterns import DualIntervalPattern, DualCartesianPattern
 from paspailleur.pattern_structures import built_in_patterns as bip
 
 
@@ -192,11 +192,23 @@ def test_is_join_closed():
     model = OPRSet.init_rule_set({t: 0, p: 2, q: -1})
     assert not model.is_join_closed()
 
+    # more real world-like testing
+    from sklearn import tree
+    X = [[0, 0], [1, 1]]
+    Y = [0, 1]
+    clf = tree.DecisionTreeClassifier(random_state=42)
+    clf = clf.fit(X, Y)
+
+    oprset = OPRClassifier.from_sklearn_dtree(clf)
+    is_join_closed = oprset.is_join_closed()
+    assert is_join_closed
+
+
 def test_join_closure():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
     model = OPRSet({t: 0, p: 2, q: 1})
     closure_true = OPRSet({t: 0, p: 2, q: 1, r: 1.5})
     closure_fact = model.join_closure()
@@ -204,7 +216,7 @@ def test_join_closure():
     assert closure_fact.predictions == closure_true.predictions
     assert closure_fact.priorities == closure_true.priorities
 
-    s = bip.IntervalPattern('>50')
+    s = DualIntervalPattern('>50')
     model = OPRSet({t: 0, p: 2, q: 1, s: 10})
     closure_true = OPRSet({t: 0, p: 2, q: 1, r: 1.5, s: 10})
     closure_fact = model.join_closure()
@@ -219,6 +231,49 @@ def test_join_closure():
     assert closure_fact.predictions == closure_true.predictions
     assert closure_fact.priorities == closure_true.priorities
 
+    # a more real-world experiments inspired by two d.trees in Iris data
+    class Plane(DualCartesianPattern):
+        DimensionTypes = {'x': DualIntervalPattern, 'y': DualIntervalPattern}
+    predictions = {
+        Plane.get_min_pattern(): 0,
+        # the first decision tree
+        Plane({'x': '<=1'}): 1, Plane({'x': '>1'}): 3,
+        Plane({'x': '(1, 3]'}): 2, Plane({'x': '>3'}): 4,
+        # the second decision tree
+        Plane({'y': '<=1'}): 11, Plane({'y': '>1'}): 13,
+        Plane({'y': '>1', 'x': '<=2'}): 12, Plane({'y': '>1', 'x': '>2'}): 14,
+    }
+    priorities = {
+        (Plane.get_min_pattern(), Plane({'x': '<=1'})), (Plane.get_min_pattern(), Plane({'x': '>1'})),
+        (Plane({'x': '>1'}), Plane({'x': '(1, 3]'})), (Plane({'x': '>1'}), Plane({'x': '>3'})),
+        (Plane.get_min_pattern(), Plane({'y': '<=1'})), (Plane.get_min_pattern(), Plane({'y': '>1'})),
+        (Plane({'y': '>1'}), Plane({'x': '<=2', 'y': '>1'})), (Plane({'y': '>1'}), Plane({'x': '>2', 'y':'>1'}))
+    }
+    closure_true = {
+        Plane.get_min_pattern(): 0,
+        # the first decision tree
+        Plane({'x': '<=1'}): 1, Plane({'x': '>1'}): 3,
+        Plane({'x': '(1, 3]'}): 2, Plane({'x': '>3'}): 4,
+        # the second decision tree
+        Plane({'y': '<=1'}): 11, Plane({'y': '>1'}): 13,
+        Plane({'y': '>1', 'x': '<=2'}): 12, Plane({'y': '>1', 'x': '>2'}): 14,
+        # combined
+        Plane({'x': '<=1', 'y': '<=1'}): (1+11)/2,
+        Plane({'x': '>1', 'y': '<=1'}): (3+11)/2,
+        Plane({'x': '(1, 3]', 'y': '<=1'}): (2+11)/2,
+        Plane({'x': '>3', 'y': '<=1'}): (4+11)/2,
+        Plane({'x': '<=1', 'y': '>1'}): (1+12)/2,
+        Plane({'x': '>1', 'y': '>1'}): (3+13)/2,
+        Plane({'x': '(1,3]', 'y': '>1'}): (2+13)/2,
+        Plane({'x': '>3', 'y': '>1'}): (4+14)/2,
+        Plane({'x': '(1, 2]', 'y': '>1'}): (2+12)/2,
+        Plane({'x': '>2', 'y': '>1'}): (3+14)/2,
+        Plane({'x': '(2, 3]', 'y': '>1'}): (2+14)/2
+    }
+    closure_true = OPRSet(closure_true)
+    model = OPRSet(predictions, priorities=priorities)
+    closure_fact = model.join_closure()
+    assert closure_fact == closure_true
 
 def test_from_sklearn_dtree():
     # A very toy-ish data
@@ -237,6 +292,9 @@ def test_from_sklearn_dtree():
     preds_clf = clf.predict_proba(X)
     preds_oprset = oprset.predict_proba(X_patterns)
     assert (preds_clf == preds_oprset).all()
+
+    subsumption_order_true = {(p, q) for p in oprset.premises for q in oprset.premises if p<=q}
+    assert oprset.subsumption_order == subsumption_order_true
 
     # Iris data
     from sklearn.datasets import load_iris
@@ -258,10 +316,10 @@ def test_from_sklearn_dtree():
 
 
 def test_linearise():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
     model = OPRSet({t: 0, p: 2, q: 1, r: 1.5})
     linearised = model.linearise()
     linearised_true = LinPRSet({t: 0, p: 2, q: 1, r: -1.5})
@@ -271,10 +329,10 @@ def test_linearise():
 
 
 def test_add():
-    t = bip.IntervalPattern.get_min_pattern()
-    p = bip.IntervalPattern('<=20')
-    q = bip.IntervalPattern('>10')
-    r = bip.IntervalPattern('(10, 20]')
+    t = DualIntervalPattern.get_min_pattern()
+    p = DualIntervalPattern('<=20')
+    q = DualIntervalPattern('>10')
+    r = DualIntervalPattern('(10, 20]')
 
     model1 = OPRSet.init_rule_set({t: 1, p: 2, q: 4})
     model2 = OPRSet.init_decision_list([(r, 20), (q, 15), (t, 10)])
@@ -285,6 +343,46 @@ def test_add():
     assert model_sum.predictions == model_sum_true.predictions
     assert model_sum.priorities == model_sum_true.priorities
 
+    # a more real-world test inspired by Iris dataset and two decision trees
+    class Plane(DualCartesianPattern):
+        DimensionTypes = {'x': DualIntervalPattern, 'y': DualIntervalPattern}
+    oprset1 = OPRSet.init_decision_tree({
+        Plane.get_min_pattern(): 0,
+        Plane({'x': '<=1'}): 1, Plane({'x': '>1'}): 3,
+        Plane({'x': '(1, 3]'}): 2, Plane({'x': '>3'}): 4,
+    })
+    oprset2 = OPRSet.init_decision_tree({
+        Plane.get_min_pattern(): 0,
+        # the second decision tree
+        Plane({'y': '<=1'}): 11, Plane({'y': '>1'}): 13,
+        Plane({'y': '>1', 'x': '<=2'}): 12, Plane({'y': '>1', 'x': '>2'}): 14,
+    })
+    sum_true = {
+        Plane.get_min_pattern(): 0,
+        # the first decision tree
+        Plane({'x': '<=1'}): 1, Plane({'x': '>1'}): 3,
+        Plane({'x': '(1, 3]'}): 2, Plane({'x': '>3'}): 4,
+        # the second decision tree
+        Plane({'y': '<=1'}): 11, Plane({'y': '>1'}): 13,
+        Plane({'y': '>1', 'x': '<=2'}): 12, # this premise will be overwritten Plane({'y': '>1', 'x': '>2'}): 14,
+        # combined
+        Plane({'x': '<=1', 'y': '<=1'}): (1+11),
+        Plane({'x': '>1', 'y': '<=1'}): (3+11),
+        Plane({'x': '(1, 3]', 'y': '<=1'}): (2+11),
+        Plane({'x': '>3', 'y': '<=1'}): (4+11),
+        Plane({'x': '<=1', 'y': '>1'}): (1+12),
+        Plane({'x': '>1', 'y': '>1'}): (3+13),
+        Plane({'x': '(1,3]', 'y': '>1'}): (2+13),
+        Plane({'x': '>3', 'y': '>1'}): (4+14),
+        Plane({'x': '(1, 2]', 'y': '>1'}): (2+12),
+        Plane({'x': '>2', 'y': '>1'}): (3+14),
+        Plane({'x': '(2, 3]', 'y': '>1'}): (2+14)
+    }
+    sum_true = OPRSet(sum_true)
+    sum_fact = oprset1 + oprset2
+    assert sum_fact == sum_true
+
+
 
 def test_add_classifiers():
     # Iris data
@@ -292,7 +390,7 @@ def test_add_classifiers():
     from sklearn.ensemble import RandomForestClassifier
     iris = load_iris()
     X, y = iris.data, iris.target
-    rf = RandomForestClassifier(random_state=42, n_estimators=2)
+    rf = RandomForestClassifier(random_state=42, n_estimators=2, max_depth=2)
     rf.fit(X, y)
     clf1, clf2 = rf.estimators_
 
@@ -300,6 +398,7 @@ def test_add_classifiers():
     oprset2 = OPRClassifier.from_sklearn_dtree(clf2)
     oprset  = oprset1 + oprset2
     assert type(oprset) == type(oprset1)
+    assert oprset.is_join_closed()
 
     X_patterns = [oprset.PatternType(dict(enumerate(x))) for x in X]
     preds_clf1 = clf1.predict_proba(X)

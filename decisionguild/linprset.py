@@ -1,13 +1,14 @@
 from typing import TypeVar, Optional
 
-from paspailleur.pattern_structures.pattern import Pattern
+from bitarray.util import zeros as bazeros
 
+from decisionguild.dual_patterns import DualPattern
 from decisionguild.oprset import OPRSet
 
 
 class LinPRSet(OPRSet):
     TargetType = TypeVar("TargetType")
-    PatternType = TypeVar("PatternType", bound=Pattern)
+    PatternType = TypeVar("PatternType", bound=DualPattern)
 
     #############
     # Class API #
@@ -16,29 +17,45 @@ class LinPRSet(OPRSet):
             self,
             predictions: dict[PatternType, TargetType] = None,
             PatternType = None,
-            subsumption_order: set[tuple[Pattern, Pattern]] = None,
-            priorities: set[tuple[Pattern, Pattern]] = None,  # for backwards compatibility with OPRSet. does not affect anything
+            subsumption_order: set[tuple[DualPattern, DualPattern]] = None,
+            priorities: set[tuple[DualPattern, DualPattern]] = None,  # for backwards compatibility with OPRSet. does not affect anything
+            premises: list[DualPattern] = None,  # for backwards compatibility with OPRSet
+            check_input: bool = True,  # for backwards compatibility with OPRSet
     ):
-        priorities = {(p, p) for p in predictions}
-        super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order)
+        if check_input:
+            priorities = {(p, p) for p in predictions}
+        else:
+            n_premises = len(predictions)
+
+            priorities = []
+            for i in range(n_premises):
+                ba = bazeros(n_premises)
+                ba[i] = True
+                priorities.append(ba)
+
+        super().__init__(predictions, priorities, PatternType=PatternType, subsumption_order=subsumption_order, premises=premises, check_input=check_input)
 
     ######################
     # ML model interface #
     ######################
-    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+    def predict_single(self, x: DualPattern) -> Optional[TargetType]:
         assert self._predictions is not None and self._priorities is not None,  \
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
 
         x = self.PatternType(x) if not isinstance(x, self.PatternType) else x
 
         applied_premises = {premise for premise in self.premises if premise <= x}
-        predictions = [self.predictions[premise] for premise in applied_premises]
+        predictions_dict = self.predictions
+        predictions = [predictions_dict[premise] for premise in applied_premises]
         return sum(predictions) if predictions else None
 
     ######################
     # Model manipulation #
     ######################
     def __add__(self, other):
+        if other == 0:  # for the sake of using standard sum() operation
+            return self
+
         predictions = dict(self.predictions)
         for premise, other_prediction in other.predictions.items():
             if premise in predictions:
@@ -46,7 +63,7 @@ class LinPRSet(OPRSet):
             else:
                 predictions[premise] = other_prediction
 
-        subsumption_order = self._subsumption_order | other._subsumption_order
+        subsumption_order = self.subsumption_order | other.subsumption_order
         for p in self.premises:
             for q in other.premises - self.premises:
                 if p <= q:
@@ -55,6 +72,5 @@ class LinPRSet(OPRSet):
                     subsumption_order.add((q, p))
         return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
 
-    def join_closure(self) -> 'OPRSet':
-        closure = super().join_closure()
-        return OPRSet(closure.predictions, PatternType=closure.PatternType, subsumption_order=closure._subsumption_order)
+    def __radd__(self, other):
+        return self + other

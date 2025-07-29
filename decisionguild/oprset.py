@@ -2,13 +2,20 @@ from functools import reduce
 from typing import TypeVar, Optional, Union
 
 import numpy as np
-from paspailleur.pattern_structures.pattern import Pattern
+from bitarray import bitarray
+from bitarray.util import zeros as bazeros
+from caspailleur import inverse_order
+
+from tqdm.auto import tqdm
 
 from decisionguild import converters
+from decisionguild.dual_patterns import DualPattern
+from decisionguild import manipulation_algorithms as manalgos
+
 
 class OPRSet:
     TargetType = TypeVar("TargetType")
-    PatternType = TypeVar("PatternType", bound=Pattern)
+    PatternType = TypeVar("PatternType", bound=DualPattern)
 
     #############
     # Class API #
@@ -16,10 +23,12 @@ class OPRSet:
 
     def __init__(
             self,
-            predictions: dict[PatternType, TargetType] = None,
-            priorities: set[tuple[Pattern, Pattern]] = None,
+            predictions: Union[dict[PatternType, TargetType], list[TargetType]] = None,
+            priorities: set[tuple[DualPattern, DualPattern]] = None,
             PatternType = None,
-            subsumption_order: set[tuple[Pattern, Pattern]] = None
+            subsumption_order: set[tuple[DualPattern, DualPattern]] = None,
+            premises: Union[set[PatternType], list[PatternType]] = None,
+            check_input: bool = True,
     ):
         """Initialise OrderedPatternRuleSet using `predictions` and `priorities` (if given)
 
@@ -29,10 +38,22 @@ class OPRSet:
         If neither `predictions` nor `priorities` are given,
         then the model should be fitted further on.
         """
+        if not check_input:
+            self._premises = premises
+            self._predictions = predictions
+            self._priorities = priorities
+            self.PatternType = PatternType
+            self._subsumption_order = subsumption_order
+            return
+
         if predictions is None:
             self._predictions, self._priorities = None, None
             self._subsumption_order = None
+            self._premises = None
             return
+
+        if not isinstance(predictions, dict):
+            predictions = dict(zip(premises, predictions))
 
         if PatternType is None:
             PatternType = next(iter(predictions.keys())).__class__
@@ -48,6 +69,9 @@ class OPRSet:
             subsumption_order = {
                 (premise, other) for premise in predictions for other in predictions if premise <= other
             }
+        else:
+            subsumption_order = self._transitive_closure(subsumption_order)
+            subsumption_order |= {(premise, premise) for premise in predictions}
 
         priorities = subsumption_order if priorities is None else priorities
         assert all(premise in predictions for pair in priorities for premise in pair), \
@@ -58,26 +82,58 @@ class OPRSet:
         assert all((b, a) not in priorities for a, b in priorities if a!=b), \
             "Priorities does not make a partial order, but rather a pseudo-order"
 
-        self._predictions = predictions
-        self._priorities = priorities
+        n_subsumed = {premise: 0 for premise in predictions}
+        for _, right in subsumption_order:
+            n_subsumed[right] += 1
+
+        premises = sorted(predictions, key=lambda premise: n_subsumed[premise])
+        premise_idx_map = {premise: idx for idx, premise in enumerate(premises)}
+        priorities_ba = [bazeros(len(premises)) for _ in premises]
+        for left, right in priorities:
+            priorities_ba[premise_idx_map[left]][premise_idx_map[right]] = True
+        subsumption_ba = [bazeros(len(premises)) for _ in premises]
+        for left, right in subsumption_order:
+            subsumption_ba[premise_idx_map[left]][premise_idx_map[right]] = True
+
+
+        self._premises: list[DualPattern] = premises
+        self._predictions: list[self.TargetType] = [predictions[premise] for premise in self._premises]
+        self._priorities: list[bitarray] = priorities_ba
         self.PatternType = PatternType
-        self._subsumption_order = subsumption_order
+        self._subsumption_order: list[bitarray] = subsumption_ba
 
     @property
-    def premises(self) -> set[Pattern]:
-        return set(self.predictions)
+    def premises(self) -> set[DualPattern]:
+        return set(self._premises)
 
     @property
-    def predictions(self) -> dict[Pattern, TargetType]:
-        return dict(self._predictions)
+    def predictions(self) -> dict[DualPattern, TargetType]:
+        return dict(zip(self._premises, self._predictions))
 
     @property
-    def priorities(self) -> set[tuple[Pattern, Pattern]]:
-        return set(self._priorities)
+    def priorities(self) -> set[tuple[DualPattern, DualPattern]]:
+        return {(self._premises[left], self._premises[right])
+                for left, rights in enumerate(self._priorities) for right in rights.search(True)}
+
+    @property
+    def subsumption_order(self) -> set[tuple[DualPattern, DualPattern]]:
+        return {(self._premises[left], self._premises[right])
+                for left, rights in enumerate(self._subsumption_order) for right in rights.search(True)}
+
+    @property
+    def contains_tautology(self) -> bool:
+        return self._premises[0] == self.PatternType.get_min_pattern()
+
+    def __len__(self) -> int:
+        return len(self._premises)
+
+    def __eq__(self, other) -> bool:
+        return (type(self) == type(other) and self.premises == other.premises
+                and self.predictions == other.predictions and self.priorities == other.priorities)
 
     def is_rule_set(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
         ruleset_priorities = {(p, p) for p in self.premises} | {(tautology, p) for p in self.premises}
@@ -85,7 +141,7 @@ class OPRSet:
 
     def is_decision_list(self) -> bool:
         tautology = self.PatternType.get_min_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
         priorities_reduced = self._transitive_reduction(self.priorities)
@@ -98,12 +154,10 @@ class OPRSet:
         return unique_lefts and unique_rights
 
     def is_decision_tree(self) -> bool:
-        tautology = self.PatternType.get_min_pattern()
-        controversy = self.PatternType.get_max_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
-        if self.priorities != self._subsumption_order:
+        if self._priorities != self._subsumption_order:
             return False
 
         priorities_reduced = self._transitive_reduction(self.priorities)
@@ -123,7 +177,7 @@ class OPRSet:
         return True
 
     @classmethod
-    def init_rule_set(cls, predictions: dict[Pattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
+    def init_rule_set(cls, predictions: dict[DualPattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
         PatternType = next(iter(predictions.keys())).__class__ if PatternType is None else PatternType
         tautology = PatternType.get_min_pattern()
 
@@ -133,7 +187,7 @@ class OPRSet:
         return ruleset
 
     @classmethod
-    def init_decision_list(cls, predictions: list[tuple[Pattern, TargetType]], PatternType = None, subsumption_order = None) -> 'OPRSet':
+    def init_decision_list(cls, predictions: list[tuple[DualPattern, TargetType]], PatternType = None, subsumption_order = None) -> 'OPRSet':
         premises = [premise for premise, _ in predictions]
         priorities = {(q, p) for p, q in zip(premises, premises[1:])}
         dlist = cls(dict(predictions), priorities, PatternType=PatternType, subsumption_order=subsumption_order)
@@ -141,7 +195,7 @@ class OPRSet:
         return dlist
 
     @classmethod
-    def init_decision_tree(cls, predictions: dict[Pattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
+    def init_decision_tree(cls, predictions: dict[DualPattern, TargetType], PatternType = None, subsumption_order = None) -> 'OPRSet':
         dtree = cls(predictions, PatternType=PatternType, subsumption_order=subsumption_order)
         assert dtree.is_decision_tree()
         return dtree
@@ -149,7 +203,8 @@ class OPRSet:
     @classmethod
     def from_sklearn_dtree(cls, decision_tree, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
         predictions, priorities = converters.from_sklearn_dtree(decision_tree, feature_names=feature_names)
-        return cls(predictions, priorities, subsumption_order=priorities)
+        PType = next(iter(predictions.keys())).__class__
+        return cls.init_decision_tree(predictions, PType, subsumption_order=priorities)
 
     @classmethod
     def from_sklearn_rforest(cls, random_forest, feature_names: Union[list[str], list[int]] = None) -> 'OPRSet':
@@ -163,23 +218,25 @@ class OPRSet:
         for estimator, weight in zip(estimators[1:], weights[1:]):
             linearised += estimator.linearise().scale(weight)
         closure = linearised.join_closure()
-        return cls(closure.predictions, closure.priorities, PatternType=closure.PatternType,
-                   subsumption_order=closure._subsumption_order)
+        return cls(
+            closure._predictions, closure._priorities, PatternType=closure.PatternType,
+            subsumption_order=closure._subsumption_order, premises=closure._premises, check_input=False
+        )
 
     ######################
     # ML model interface #
     ######################
-    def predict(self, X: list[Pattern]) -> np.ndarray[Optional[TargetType]]:
+    def predict(self, X: list[DualPattern]) -> np.ndarray[Optional[TargetType]]:
         return np.array([self.predict_single(x) for x in X])
 
-    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+    def predict_single(self, x: DualPattern) -> Optional[TargetType]:
         assert self._predictions is not None and self._priorities is not None,  \
             "The model is not fitted yet. Either fit it or initialise with the provided predictions and priorities."
 
         x = self.PatternType(x) if not isinstance(x, self.PatternType) else x
         applied_premises, maximal_premises = self.traverse_single(x)
 
-        if self.priorities != self._subsumption_order:
+        if self._priorities != self._subsumption_order:
             maxpriority_premises = {
                 premise for premise in applied_premises
                 if not any((premise, other) in self.priorities for other in applied_premises if other != premise)
@@ -187,62 +244,41 @@ class OPRSet:
         else:
             maxpriority_premises = maximal_premises
 
-        predictions = [self.predictions[premise] for premise in maxpriority_premises]
+        predictions_dict = self.predictions
+        predictions = [predictions_dict[premise] for premise in maxpriority_premises]
         return sum(predictions)/len(predictions) if predictions else None
 
     ######################
     # Model manipulation #
     ######################
-    def join_closure(self) -> 'OPRSet':
-        premise_list = list(self.premises)
-        subpremises = {premise: set() for premise in premise_list}
-        for subpremise, superpremise in self._subsumption_order:
-            subpremises[superpremise].add(subpremise)
-        premise_list = sorted(subpremises.keys(), key=lambda premise: len(subpremises[premise]))
+    def join_closure(self, use_tqdm: bool = False) -> 'OPRSet':
+        premise_list = list(self._premises)
+        subpremises = inverse_order(self._subsumption_order)
 
-        controversy = self.PatternType.get_max_pattern()
-        i = 0
-        while i < len(premise_list):
-            for j in range(i):
-                p, q = premise_list[i], premise_list[j]
-                if p in subpremises[q] or q in subpremises[p]:
-                    continue
+        #premise_list, subpremises = manalgos.join_closure_pattern(premise_list, subpremises, use_tqdm=use_tqdm)
+        #premise_list, subpremises = manalgos.join_closure_atomic(premise_list, subpremises, use_tqdm=use_tqdm)
+        premise_list, subpremises_closed = manalgos.join_closure_cbo_icpj(premise_list, subpremises, use_tqdm=use_tqdm)
+        subsumption_order = inverse_order(subpremises_closed)
 
-                join = p | q
-                if join == controversy or join in subpremises:
-                    continue
-                premise_list.append(join)
-
-                subpremises[join] = subpremises[p] | subpremises[q]
-                for other in set(subpremises) - set(subpremises[join]):
-                    if p in subpremises[other] and q in subpremises[other]:
-                        subpremises[other].add(join)
-                        continue
-                    if join <= other:
-                        subpremises[other].add(join)
-                        continue
-                    if other <= join:
-                        subpremises[join].add(other)
-            i += 1
-
-        predictions = {premise: self.predict_single(premise) for premise in premise_list}
-        subsumption_order = {(sub, superpremise) for superpremise, subs in subpremises.items() for sub in subs}
-        return self.__class__(predictions, PatternType=self.PatternType, subsumption_order=subsumption_order)
-
+        predictions = [self.predict_single(premise) for premise in tqdm(premise_list, disable=not use_tqdm, desc='Compute predictions', unit_scale=True)]
+        return OPRSet(
+            premises=premise_list, predictions=predictions, priorities=subsumption_order,
+            PatternType=self.PatternType, subsumption_order=subsumption_order,
+            check_input=False
+        )
 
     def is_join_closed(self) -> bool:
-        tautology = self.PatternType.get_min_pattern()
-        controversy = self.PatternType.get_max_pattern()
-        if tautology not in self.premises:
+        if not self.contains_tautology:
             return False
 
-        for p in self.premises:
-            for q in self.premises:
+        premises = self.premises
+        for p in premises:
+            for q in premises:
                 join = p | q
-                if join == controversy:
+                if join.is_controversy:
                     continue
 
-                if join not in self.premises:
+                if join not in premises:
                     return False
                 if (p, join) not in self.priorities or (q, join) not in self.priorities:
                     return False
@@ -262,24 +298,26 @@ class OPRSet:
         for premise in sorted(predecessors, key=lambda p: len(predecessors[p])):
             accumulated_prediction = sum(predictions[pred] for pred in predecessors[premise])
             predictions[premise] = closure.predictions[premise] - accumulated_prediction
-        return LinPRSet(predictions, subsumption_order=closure._subsumption_order)
+        return LinPRSet(predictions, subsumption_order=closure.subsumption_order)
 
     def __add__(self, other: 'OPRSet') -> 'OPRSet':
+        if other == 0:  # for the sake of applying standard `sum()` function
+            return self
+
         closure = (self.linearise() + other.linearise()).join_closure()
         return self.__class__(predictions=closure.predictions, priorities=closure.priorities, PatternType=closure.PatternType)
 
     def scale(self, k: int) -> 'OPRSet':
-        scaled_predictions = {premise: prediction * k for premise, prediction in self.predictions.items()}
-        return self.__class__(scaled_predictions, priorities=self.priorities, PatternType=self.PatternType, subsumption_order=self._subsumption_order)
+        scaled_predictions = [prediction * k for prediction in self._predictions]
+        return self.__class__(scaled_predictions, priorities=self._priorities, PatternType=self.PatternType,
+                              subsumption_order=self._subsumption_order, premises=self._premises, check_input=False)
 
-    def traverse(self, X: list[Pattern]) -> list[tuple[set[Pattern], set[Pattern]]]:
+    def traverse(self, X: list[DualPattern]) -> list[tuple[set[DualPattern], set[DualPattern]]]:
         return [self.traverse_single(x) for x in X]
 
-    def traverse_single(self, x: PatternType) -> tuple[set[Pattern], set[Pattern]]:
-        all_successors = {premise: set() for premise in self.premises}
-        for left, right in self._subsumption_order:
-            if left != right:
-                all_successors[left].add(right)
+    def traverse_single(self, x: PatternType) -> tuple[set[DualPattern], set[DualPattern]]:
+        all_successors = {self._premises[left]: {self._premises[r] for r in rights.search(True) if left != r}
+                          for left, rights in enumerate(self._subsumption_order)}
         direct_successors = dict()
         for premise, successors in all_successors.items():
             transitives = reduce(set.union, (all_successors[suc] for suc in successors), set())
@@ -309,11 +347,13 @@ class OPRSet:
     # Helping functions #
     #####################
     @staticmethod
-    def _transitive_closure(relation: set[tuple[Pattern, Pattern]]) -> set[tuple[Pattern, Pattern]]:
+    def _transitive_closure(relation: set[tuple[DualPattern, DualPattern]]) -> set[tuple[DualPattern, DualPattern]]:
         relation_dict = dict()  # TODO: Replace with groupby function
         for left, right in relation:
             if left not in relation_dict:
                 relation_dict[left] = set()
+            if right not in relation_dict:
+                relation_dict[right] = set()
             relation_dict[left].add(right)
 
         new_relation_added = True
@@ -326,11 +366,13 @@ class OPRSet:
         return {(a, b) for a, bs in relation_dict.items() for b in bs}
 
     @staticmethod
-    def _transitive_reduction(relation: set[tuple[Pattern, Pattern]]) -> set[tuple[Pattern, Pattern]]:
+    def _transitive_reduction(relation: set[tuple[DualPattern, DualPattern]]) -> set[tuple[DualPattern, DualPattern]]:
         relation_dict = dict()
         for left, right in relation:
             if left not in relation_dict:
                 relation_dict[left] = set()
+            if right not in relation_dict:
+                relation_dict[right] = set()
             if left != right:
                 relation_dict[left].add(right)
 
@@ -345,21 +387,30 @@ class OPRSet:
 class OPRClassifier(OPRSet):
     TargetType = int
 
-    def predict_single_proba(self, x: Pattern) -> Optional[np.ndarray]:
+    def predict_single_proba(self, x: DualPattern) -> Optional[np.ndarray]:
         return super().predict_single(x)
 
-    def predict_single(self, x: Pattern) -> Optional[TargetType]:
+    def predict_single(self, x: DualPattern) -> Optional[TargetType]:
         return int(np.argmax(self.predict_single_proba(x)))
 
-    def predict_proba(self, X: list[Pattern]) -> np.ndarray:
+    def predict_proba(self, X: list[DualPattern]) -> np.ndarray:
         return np.vstack([self.predict_single_proba(x) for x in X])
 
     @property
-    def predictions(self) -> dict[Pattern, np.ndarray[float]]:
+    def predictions(self) -> dict[DualPattern, np.ndarray[float]]:
         return super().predictions
+
+    def __eq__(self, other) -> bool:
+        if type(self) != type(other):
+            return False
+        predictions_fixed = {p: pred.tolist() for p, pred in self.predictions.items()}
+        others_fixed = {p: pred.tolist() for p, pred in other.predictions.items()}
+        return self.premises == other.premises and predictions_fixed == others_fixed and self.priorities == other.priorities
 
     def join_closure(self) -> 'OPRClassifier':
         closure = super().join_closure()
-        predictions = {premise: self.predict_single_proba(premise) for premise in closure.premises}
-        return self.__class__(predictions=predictions, priorities=closure.priorities, PatternType=closure.PatternType,
-                              subsumption_order=closure._subsumption_order)
+        predictions = [self.predict_single_proba(premise) for premise in closure._premises]
+        return self.__class__(
+            predictions=predictions, priorities=closure.priorities, PatternType=closure.PatternType,
+            subsumption_order=closure._subsumption_order, premises=closure._premises, check_input=False
+        )
